@@ -3,20 +3,53 @@ import {
   View, Text, TouchableOpacity, StyleSheet,
   ScrollView, Modal, Pressable,
 } from 'react-native';
-import { Bell, MessageCircle, UserCog, RefreshCw, X } from 'lucide-react-native';
+import {
+  Bell, MessageCircle, UserCog, RefreshCw, X,
+  Heart, Droplets, Thermometer, Wind,
+  Pill, CheckCircle2, Clock, AlertTriangle,
+  ChevronRight, Plus, Brain,
+} from 'lucide-react-native';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { useVillageStore } from '../../stores/useVillageStore';
 import { useRouter } from 'expo-router';
 import C from '../../constants/colors';
+
+const VITALS = [
+  { label: 'Heart Rate', value: '72', unit: 'bpm', icon: Heart, color: '#e53935', bg: '#fdecea' },
+  { label: 'Blood Pressure', value: '128/82', unit: 'mmHg', icon: Droplets, color: C.tertiary, bg: '#e3f2fd' },
+  { label: 'Temperature', value: '98.4', unit: '°F', icon: Thermometer, color: '#f57c00', bg: '#fff3e0' },
+  { label: 'SpO2', value: '97', unit: '%', icon: Wind, color: '#2e7d32', bg: '#e8f5e9' },
+];
+
+const TASKS = [
+  { id: '1', title: 'Morning Medications', time: '8:00 AM', done: true, urgent: false },
+  { id: '2', title: 'Blood Pressure Check', time: '10:00 AM', done: false, urgent: false },
+  { id: '3', title: 'Physical Therapy', time: '2:00 PM', done: false, urgent: false },
+  { id: '4', title: 'Evening Medications', time: '6:00 PM', done: false, urgent: true },
+];
+
+const ALERTS = [
+  { id: '1', text: 'BP trending high — 3 readings above 130 this week', level: 'warn' },
+  { id: '2', text: 'Metformin refill due in 4 days', level: 'info' },
+];
 
 export default function Dashboard() {
   const { user } = useAuthStore();
   const { villages, activeVillageId, lovedOne, setActiveVillage } = useVillageStore();
   const router = useRouter();
   const [sheetVisible, setSheetVisible] = useState(false);
+  const [tasks, setTasks] = useState(TASKS);
 
   const activeVillage = villages.find(v => v.id === activeVillageId);
   const patientName = lovedOne?.name ?? activeVillage?.name ?? 'Patient';
+  const greeting = (() => {
+    const h = new Date().getHours();
+    if (h < 12) return 'Good morning';
+    if (h < 17) return 'Good afternoon';
+    return 'Good evening';
+  })();
+
+  const doneTasks = tasks.filter(t => t.done).length;
 
   return (
     <View style={styles.screen}>
@@ -35,23 +68,130 @@ export default function Dashboard() {
           <TouchableOpacity style={styles.iconBtn} onPress={() => router.push('/chat')}>
             <MessageCircle size={22} color={C.onSurface} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.iconBtn}>
+          <TouchableOpacity style={styles.iconBtn} onPress={() => router.push('/(tabs)/village')}>
             <Bell size={22} color={C.onSurface} />
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Empty state */}
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.emptyContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.emptyState}>
-          <View style={styles.emptyIconWrap}>
-            <Text style={styles.emptyIcon}>🏥</Text>
-          </View>
-          <Text style={styles.emptyTitle}>No data yet</Text>
-          <Text style={styles.emptySubtitle}>
-            Your care dashboard will populate once you start logging health events and tasks.
-          </Text>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+
+        {/* Greeting */}
+        <Text style={styles.greeting}>{greeting}, {user?.displayName ?? 'Caregiver'}</Text>
+        <Text style={styles.greetingSub}>Here's {patientName}'s care summary for today</Text>
+
+        {/* AI Alert Banner */}
+        {ALERTS.length > 0 && (
+          <TouchableOpacity style={styles.alertBanner} onPress={() => router.push('/(tabs)/village')}>
+            <View style={styles.alertBannerIcon}>
+              <Brain size={18} color={C.primary} />
+            </View>
+            <Text style={styles.alertBannerText} numberOfLines={2}>{ALERTS[0].text}</Text>
+            <ChevronRight size={16} color={C.primary} />
+          </TouchableOpacity>
+        )}
+
+        {/* Vitals Grid */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Today's Vitals</Text>
+          <TouchableOpacity onPress={() => router.push('/(tabs)/log')}>
+            <Text style={styles.sectionLink}>Log vitals</Text>
+          </TouchableOpacity>
         </View>
+        <View style={styles.vitalsGrid}>
+          {VITALS.map((v) => (
+            <View key={v.label} style={[styles.vitalCard, { backgroundColor: v.bg }]}>
+              <v.icon size={18} color={v.color} />
+              <Text style={[styles.vitalValue, { color: v.color }]}>{v.value}</Text>
+              <Text style={styles.vitalUnit}>{v.unit}</Text>
+              <Text style={styles.vitalLabel}>{v.label}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Today's Tasks */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Today's Tasks</Text>
+          <View style={styles.taskProgress}>
+            <Text style={styles.taskProgressText}>{doneTasks}/{tasks.length}</Text>
+          </View>
+        </View>
+        <View style={styles.taskList}>
+          {tasks.map((task) => (
+            <TouchableOpacity
+              key={task.id}
+              style={[styles.taskRow, task.done && styles.taskRowDone]}
+              onPress={() => setTasks(prev => prev.map(t => t.id === task.id ? { ...t, done: !t.done } : t))}
+            >
+              <View style={[styles.taskCheck, task.done && styles.taskCheckDone]}>
+                {task.done && <CheckCircle2 size={20} color={C.primaryContainer} />}
+                {!task.done && task.urgent && <AlertTriangle size={16} color={C.error} />}
+                {!task.done && !task.urgent && <Clock size={16} color={C.onSurfaceVariant} />}
+              </View>
+              <View style={styles.taskInfo}>
+                <Text style={[styles.taskTitle, task.done && styles.taskTitleDone]}>{task.title}</Text>
+                <Text style={styles.taskTime}>{task.time}</Text>
+              </View>
+              {task.urgent && !task.done && (
+                <View style={styles.urgentBadge}>
+                  <Text style={styles.urgentText}>URGENT</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Quick Actions */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Quick Actions</Text>
+        </View>
+        <View style={styles.quickActions}>
+          <TouchableOpacity style={styles.quickBtn} onPress={() => router.push('/(tabs)/log')}>
+            <View style={[styles.quickIcon, { backgroundColor: '#fdecea' }]}>
+              <Heart size={22} color="#e53935" />
+            </View>
+            <Text style={styles.quickLabel}>Log Vitals</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.quickBtn} onPress={() => router.push('/(tabs)/meds')}>
+            <View style={[styles.quickIcon, { backgroundColor: '#fff3e0' }]}>
+              <Pill size={22} color="#f57c00" />
+            </View>
+            <Text style={styles.quickLabel}>Medications</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.quickBtn} onPress={() => router.push('/chat')}>
+            <View style={[styles.quickIcon, { backgroundColor: '#f3e5f5' }]}>
+              <Brain size={22} color="#7b1fa2" />
+            </View>
+            <Text style={styles.quickLabel}>Ask AI</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.quickBtn} onPress={() => router.push('/(tabs)/calendar')}>
+            <View style={[styles.quickIcon, { backgroundColor: '#e8f5e9' }]}>
+              <Plus size={22} color="#2e7d32" />
+            </View>
+            <Text style={styles.quickLabel}>Add Event</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Conditions */}
+        {lovedOne?.conditions && lovedOne.conditions.length > 0 && (
+          <>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Active Conditions</Text>
+              <TouchableOpacity onPress={() => router.push('/patient-edit')}>
+                <Text style={styles.sectionLink}>Edit</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.conditionChips}>
+              {lovedOne.conditions.map(c => (
+                <View key={c} style={styles.conditionChip}>
+                  <Text style={styles.conditionChipText}>{c}</Text>
+                </View>
+              ))}
+            </View>
+          </>
+        )}
+
+        <View style={{ height: 100 }} />
       </ScrollView>
 
       {/* Patient Switcher Bottom Sheet */}
@@ -66,7 +206,6 @@ export default function Dashboard() {
             </TouchableOpacity>
           </View>
 
-          {/* Patient list */}
           {villages.map(v => {
             const isActive = v.id === activeVillageId;
             return (
@@ -91,7 +230,6 @@ export default function Dashboard() {
 
           <View style={styles.sheetDivider} />
 
-          {/* Actions */}
           <TouchableOpacity
             style={styles.sheetAction}
             onPress={() => { setSheetVisible(false); router.push('/patient-edit'); }}
@@ -106,7 +244,7 @@ export default function Dashboard() {
             style={styles.sheetAction}
             onPress={() => {
               const other = villages.find(v => v.id !== activeVillageId);
-              if (other) { setActiveVillage(other.id); }
+              if (other) setActiveVillage(other.id);
               setSheetVisible(false);
             }}
           >
@@ -126,11 +264,11 @@ export default function Dashboard() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.surface },
   scroll: { flex: 1 },
-  emptyContent: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40 },
+  content: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 32 },
 
   topBar: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 24, paddingTop: 56, paddingBottom: 16, backgroundColor: C.surface,
+    paddingHorizontal: 20, paddingTop: 56, paddingBottom: 16, backgroundColor: C.surface,
   },
   topBarLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   topBarRight: { flexDirection: 'row', alignItems: 'center', gap: 4 },
@@ -140,19 +278,89 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   avatarText: { fontSize: 18, fontWeight: '700', color: C.onPrimaryContainer },
-  topBarName: { fontSize: 22, fontWeight: '800', color: C.primary, letterSpacing: -0.5 },
+  topBarName: { fontSize: 20, fontWeight: '800', color: C.primary, letterSpacing: -0.3 },
   topBarSub: { fontSize: 11, color: C.onSurfaceVariant, marginTop: 1 },
   iconBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 20 },
 
-  emptyState: { alignItems: 'center', gap: 16 },
-  emptyIconWrap: {
-    width: 80, height: 80, borderRadius: 24,
-    backgroundColor: C.surfaceContainerLow,
-    alignItems: 'center', justifyContent: 'center', marginBottom: 8,
+  greeting: { fontSize: 24, fontWeight: '800', color: C.onSurface, letterSpacing: -0.5, marginBottom: 4 },
+  greetingSub: { fontSize: 14, color: C.onSurfaceVariant, marginBottom: 20 },
+
+  alertBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: '#fff8f0',
+    borderRadius: 16, padding: 14, marginBottom: 24,
+    borderWidth: 1, borderColor: '#ffe0c2',
   },
-  emptyIcon: { fontSize: 36 },
-  emptyTitle: { fontSize: 20, fontWeight: '700', color: C.onSurface },
-  emptySubtitle: { fontSize: 14, color: C.onSurfaceVariant, textAlign: 'center', lineHeight: 22 },
+  alertBannerIcon: {
+    width: 32, height: 32, borderRadius: 10,
+    backgroundColor: '#fff0e0',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  alertBannerText: { flex: 1, fontSize: 13, color: C.onSurface, fontWeight: '500', lineHeight: 18 },
+
+  sectionHeader: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    marginBottom: 12,
+  },
+  sectionTitle: { fontSize: 17, fontWeight: '700', color: C.onSurface },
+  sectionLink: { fontSize: 13, color: C.primary, fontWeight: '600' },
+
+  vitalsGrid: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 28,
+  },
+  vitalCard: {
+    width: '47%', borderRadius: 18, padding: 16, gap: 4,
+  },
+  vitalValue: { fontSize: 22, fontWeight: '800', letterSpacing: -0.5, marginTop: 6 },
+  vitalUnit: { fontSize: 11, fontWeight: '600', color: C.onSurfaceVariant },
+  vitalLabel: { fontSize: 12, color: C.onSurfaceVariant, marginTop: 2 },
+
+  taskList: { gap: 8, marginBottom: 28 },
+  taskRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: C.surfaceContainerLowest,
+    borderRadius: 16, padding: 14,
+    shadowColor: '#5a4136', shadowOpacity: 0.04, shadowRadius: 6, elevation: 1,
+  },
+  taskRowDone: { opacity: 0.55 },
+  taskCheck: {
+    width: 32, height: 32, borderRadius: 10,
+    backgroundColor: C.surfaceContainerLow,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  taskCheckDone: { backgroundColor: '#e8f5e9' },
+  taskInfo: { flex: 1 },
+  taskTitle: { fontSize: 15, fontWeight: '600', color: C.onSurface },
+  taskTitleDone: { textDecorationLine: 'line-through', color: C.onSurfaceVariant },
+  taskTime: { fontSize: 12, color: C.onSurfaceVariant, marginTop: 2 },
+  urgentBadge: {
+    backgroundColor: '#fdecea', borderRadius: 8,
+    paddingHorizontal: 8, paddingVertical: 3,
+  },
+  urgentText: { fontSize: 9, fontWeight: '800', color: C.error, letterSpacing: 0.5 },
+  taskProgress: {
+    backgroundColor: C.primaryContainer, borderRadius: 99,
+    paddingHorizontal: 10, paddingVertical: 3,
+  },
+  taskProgressText: { fontSize: 11, fontWeight: '700', color: C.onPrimaryContainer },
+
+  quickActions: {
+    flexDirection: 'row', justifyContent: 'space-between', marginBottom: 28,
+  },
+  quickBtn: { alignItems: 'center', gap: 8, flex: 1 },
+  quickIcon: {
+    width: 56, height: 56, borderRadius: 18,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  quickLabel: { fontSize: 11, fontWeight: '600', color: C.onSurface, textAlign: 'center' },
+
+  conditionChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 28 },
+  conditionChip: {
+    backgroundColor: C.surfaceContainerLow,
+    borderRadius: 99, paddingHorizontal: 14, paddingVertical: 7,
+    borderWidth: 1, borderColor: C.outlineVariant,
+  },
+  conditionChipText: { fontSize: 13, color: C.onSurface, fontWeight: '500' },
 
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
   sheet: {
@@ -184,10 +392,7 @@ const styles = StyleSheet.create({
   patientInfo: { flex: 1 },
   patientName: { fontSize: 16, fontWeight: '700', color: C.onSurface },
   patientRole: { fontSize: 12, color: C.onSurfaceVariant, marginTop: 2 },
-  activeDot: {
-    width: 10, height: 10, borderRadius: 5,
-    backgroundColor: C.primaryContainer,
-  },
+  activeDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: C.primaryContainer },
 
   sheetDivider: { height: 1, backgroundColor: C.surfaceContainerHigh, marginVertical: 12 },
   sheetAction: {
