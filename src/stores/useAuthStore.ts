@@ -1,11 +1,25 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { auth } from '../lib/firebase';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut as fbSignOut } from 'firebase/auth';
+
+// Mock users — no Firebase auth needed
+const MOCK_USERS: Record<string, { uid: string; email: string; displayName: string; password: string }> = {
+  'cleo@caresync.dev': {
+    uid: 'user_cleo',
+    email: 'cleo@caresync.dev',
+    displayName: 'Cleo',
+    password: 'Cleo1234!',
+  },
+  'nikhil@caresync.dev': {
+    uid: 'user_nikhil',
+    email: 'nikhil@caresync.dev',
+    displayName: 'Nikhil',
+    password: 'Nikhil1234!',
+  },
+};
 
 interface AuthState {
-  user: any | null;
+  user: { uid: string; email: string; displayName: string } | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, displayName: string) => Promise<void>;
@@ -17,29 +31,25 @@ export const useAuthStore = create<AuthState>()(
     (set) => ({
       user: null,
       loading: false,
+
       signIn: async (email, password) => {
         set({ loading: true });
-        try {
-          const cred = await signInWithEmailAndPassword(auth, email, password);
-          set({ user: { uid: cred.user.uid, email: cred.user.email }, loading: false });
-        } catch (e) {
+        await new Promise(r => setTimeout(r, 400)); // simulate network
+        const found = MOCK_USERS[email.toLowerCase().trim()];
+        if (!found || found.password !== password) {
           set({ loading: false });
           throw new Error('Invalid email or password');
         }
+        set({ user: { uid: found.uid, email: found.email, displayName: found.displayName }, loading: false });
       },
+
       register: async (email, password, displayName) => {
         set({ loading: true });
-        try {
-          const cred = await createUserWithEmailAndPassword(auth, email, password);
-          set({ user: { uid: cred.user.uid, email: cred.user.email, displayName }, loading: false });
-        } catch (e) {
-          set({ loading: false });
-          throw e; // specific error handling could be here
-        }
+        await new Promise(r => setTimeout(r, 400));
+        set({ user: { uid: `user_${Date.now()}`, email, displayName }, loading: false });
       },
+
       signOut: async () => {
-        set({ loading: true });
-        await fbSignOut(auth);
         set({ user: null, loading: false });
       },
     }),

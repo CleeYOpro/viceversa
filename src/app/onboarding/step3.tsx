@@ -1,87 +1,105 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView } from 'react-native';
+import {
+  View, Text, TouchableOpacity, StyleSheet, ActivityIndicator,
+} from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { db } from '../../lib/firebase';
-import { doc, setDoc } from 'firebase/firestore';
+import { ArrowRight, CheckCircle } from 'lucide-react-native';
+import C from '../../constants/colors';
 
 export default function OnboardingStep3() {
   const router = useRouter();
   const { villageId } = useLocalSearchParams();
-  const [name, setName] = useState('');
-  const [dob, setDob] = useState('');
-  const [conditions, setConditions] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleFinish = async () => {
-    if (!villageId) return;
     setLoading(true);
-
-    try {
-      if (name.trim()) {
-        await setDoc(doc(db, 'villages', villageId as string, 'lovedOne', 'profile'), {
-          name,
-          dob,
-          conditions: conditions.split(',').map(c => c.trim()).filter(Boolean),
-          allergies: [],
-          emergencyContact: { name: '', phone: '', relationship: '' }
-        });
-      }
+    // Small delay for UX feel, then go to app
+    setTimeout(() => {
       router.replace('/(tabs)');
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
+    }, 600);
   };
 
   return (
-    <ScrollView className="flex-1 bg-white px-6 py-12">
-      <Text className="text-[32px] font-bold text-gray-900 mb-2 mt-8">Loved One Profile</Text>
-      <Text className="text-[18px] text-gray-600 mb-8">
-        Tell us a little about the person you're caring for.
-      </Text>
+    <View style={styles.screen}>
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={styles.headerBrand}>
+          <Text style={styles.headerIcon}>✚</Text>
+          <Text style={styles.headerTitle}>High-Performance Care</Text>
+        </View>
+      </View>
+      <View style={styles.headerDivider} />
 
-      <Text className="text-[18px] font-bold text-gray-800 mb-2">Name</Text>
-      <TextInput
-        className="bg-gray-50 border text-[18px] border-gray-300 rounded-lg p-4 mb-6 min-h-[44px]"
-        placeholder="e.g., Martha"
-        value={name}
-        onChangeText={setName}
-      />
+      <View style={styles.content}>
+        {/* Progress */}
+        <View style={styles.progressRow}>
+          <View style={styles.progressBar} />
+          <View style={styles.progressBar} />
+          <View style={styles.progressBar} />
+          <Text style={styles.progressLabel}>STEP 3 OF 3</Text>
+        </View>
 
-      <Text className="text-[18px] font-bold text-gray-800 mb-2">Date of Birth</Text>
-      <TextInput
-        className="bg-gray-50 border text-[18px] border-gray-300 rounded-lg p-4 mb-6 min-h-[44px]"
-        placeholder="YYYY-MM-DD"
-        value={dob}
-        onChangeText={setDob}
-      />
+        {/* Confirmation */}
+        <View style={styles.centerContent}>
+          <View style={styles.checkWrap}>
+            <CheckCircle size={64} color={C.primaryContainer} />
+          </View>
+          <Text style={styles.heading}>You're all set</Text>
+          <Text style={styles.subheading}>
+            Your care profile is ready. You can always update settings and invite more team members later.
+          </Text>
+        </View>
 
-      <Text className="text-[18px] font-bold text-gray-800 mb-2">Medical Conditions (comma separated)</Text>
-      <TextInput
-        className="bg-gray-50 border text-[18px] border-gray-300 rounded-lg p-4 mb-8 min-h-[80px]"
-        multiline
-        placeholder="e.g., Hypertension, Diabetes"
-        value={conditions}
-        onChangeText={setConditions}
-      />
+        {/* CTA */}
+        <TouchableOpacity
+          style={styles.ctaBtn}
+          onPress={handleFinish}
+          disabled={loading}
+        >
+          {loading
+            ? <ActivityIndicator color="#fff" />
+            : <>
+                <Text style={styles.ctaBtnText}>Go to Dashboard</Text>
+                <ArrowRight size={20} color="#fff" style={{ marginLeft: 8 }} />
+              </>
+          }
+        </TouchableOpacity>
 
-      <TouchableOpacity
-        className="bg-[#0B6E4F] rounded-xl p-4 items-center justify-center min-h-[56px] mb-4"
-        onPress={handleFinish}
-        disabled={loading}
-      >
-        <Text className="text-white text-[20px] font-bold">
-          {loading ? 'Saving...' : 'Finish Setup'}
-        </Text>
-      </TouchableOpacity>
-      
-      <TouchableOpacity
-        className="py-4 items-center justify-center mb-12"
-        onPress={() => router.replace('/(tabs)')}
-      >
-        <Text className="text-gray-500 text-[18px] font-semibold">Skip for now</Text>
-      </TouchableOpacity>
-    </ScrollView>
+        <Text style={styles.termsNote}>By completing setup, you agree to our Terms of Service.</Text>
+      </View>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: C.surface },
+  header: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 24, paddingVertical: 16, backgroundColor: C.surface,
+  },
+  headerBrand: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerIcon: { fontSize: 18, color: C.primaryContainer },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: C.primary },
+  headerDivider: { height: 1, backgroundColor: C.surfaceContainerHigh, opacity: 0.3 },
+
+  content: { flex: 1, paddingHorizontal: 24, paddingTop: 24, paddingBottom: 48, justifyContent: 'space-between' },
+
+  progressRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 28 },
+  progressBar: { width: 48, height: 6, borderRadius: 3, backgroundColor: C.primaryContainer },
+  progressLabel: { marginLeft: 'auto', fontSize: 11, fontWeight: '700', color: C.onSurfaceVariant, opacity: 0.6 },
+
+  centerContent: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, paddingHorizontal: 16 },
+  checkWrap: { marginBottom: 8 },
+  heading: { fontSize: 28, fontWeight: '800', color: C.onSurface, letterSpacing: -0.5, textAlign: 'center' },
+  subheading: { fontSize: 15, color: C.onSurfaceVariant, textAlign: 'center', lineHeight: 24 },
+
+  ctaBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    height: 56, borderRadius: 16,
+    backgroundColor: C.primaryContainer,
+    marginBottom: 16,
+    shadowColor: C.primary, shadowOpacity: 0.28, shadowRadius: 16, elevation: 4,
+  },
+  ctaBtnText: { color: '#fff', fontSize: 17, fontWeight: '700' },
+  termsNote: { textAlign: 'center', fontSize: 12, color: C.onSurfaceVariant, opacity: 0.6 },
+});
