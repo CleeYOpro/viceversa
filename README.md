@@ -1,6 +1,6 @@
-# CareSync Village
+# KomeKare
 
-CareSync Village is an AI-powered family caregiver coordination mobile app built natively utilizing Expo and Firebase infrastructure linking AI summarizations with Google Gemini 1.5 Flash models.
+KomeKare is an AI-powered family caregiver coordination mobile app built natively utilizing Expo and Firebase infrastructure linking AI summarizations with Google Gemini 1.5 Flash models.
 
 ## Tech Stack
 - Expo (React Native)

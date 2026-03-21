@@ -52,7 +52,7 @@ export default function SignIn() {
           </View>
         </View>
 
-        <Text style={styles.appName}>CareSync AI</Text>
+        <Text style={styles.appName}>KomeKare</Text>
         <Text style={styles.tagline}>HIGH-PERFORMANCE CARE</Text>
 
         {errorMsg ? <Text style={styles.error}>{errorMsg}</Text> : null}
@@ -131,7 +131,7 @@ export default function SignIn() {
 
         {/* Register link */}
         <View style={styles.registerRow}>
-          <Text style={styles.registerText}>New to CareSync? </Text>
+          <Text style={styles.registerText}>New to KomeKare? </Text>
           <TouchableOpacity onPress={() => router.push('/auth/register')}>
             <Text style={styles.registerLink}>Create an Account</Text>
           </TouchableOpacity>
@@ -141,7 +141,7 @@ export default function SignIn() {
         <View style={styles.securityBox}>
           <ShieldCheck size={18} color={C.onSurfaceVariant} style={{ marginRight: 10, marginTop: 1 }} />
           <Text style={styles.securityText}>
-            Your data security is our priority. By signing in, you agree to CareSync AI's{' '}
+            Your data security is our priority. By signing in, you agree to KomeKare's{' '}
             <Text style={styles.securityLink}>Terms of Service</Text> and{' '}
             <Text style={styles.securityLink}>Privacy Policy</Text>. High-Performance Care encryption is active.
           </Text>

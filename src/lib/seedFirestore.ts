@@ -42,15 +42,15 @@ export async function seedDemoPatients() {
 
   // ── User docs ──────────────────────────────────────────────────────────────
   await setDoc(doc(db, 'users', USER_CLEO_ID), {
-    displayName: 'Cleo', email: 'cleo@caresync.dev', role: 'caregiver',
+    displayName: 'Cleo', email: 'cleo@komekare.dev', role: 'caregiver',
     villageIds: [PATIENT_ELEANOR_ID, PATIENT_HAROLD_ID], createdAt: ts(60),
   }, { merge: true });
   await setDoc(doc(db, 'users', USER_NIKHIL_ID), {
-    displayName: 'Nikhil', email: 'nikhil@caresync.dev', role: 'caregiver',
+    displayName: 'Nikhil', email: 'nikhil@komekare.dev', role: 'caregiver',
     villageIds: [PATIENT_ELEANOR_ID, PATIENT_HAROLD_ID], createdAt: ts(60),
   }, { merge: true });
   await setDoc(doc(db, 'users', USER_DOCTOR_ID), {
-    displayName: 'Dr. Priya Patel', email: 'drpatel@caresync.dev', role: 'doctor',
+    displayName: 'Dr. Priya Patel', email: 'drpatel@komekare.dev', role: 'doctor',
     villageIds: [], createdAt: ts(90),
     doctorProfile: { licenseNumber: 'CA-MD-88421', specialty: 'Geriatrics', npi: '1234567890' },
   }, { merge: true });

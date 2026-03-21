@@ -47,7 +47,7 @@ export default function Register() {
       <View style={styles.header}>
         <View style={styles.headerBrand}>
           <Text style={styles.headerIcon}>✚</Text>
-          <Text style={styles.headerTitle}>CareSync AI</Text>
+          <Text style={styles.headerTitle}>KomeKare</Text>
         </View>
         <TouchableOpacity onPress={() => router.push('/auth/sign-in')}>
           <Text style={styles.headerAction}>Log In</Text>

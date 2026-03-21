@@ -1,7 +1,7 @@
 import fc from 'fast-check';
 import { authSchema, healthLogSchema, medicationSchema, taskSchema, helpRequestSchema } from '../../lib/utils';
 
-// Feature: caresync-village, Property 1: Zod Schema Validation Rejects Invalid Inputs
+// Feature: komekare, Property 1: Zod Schema Validation Rejects Invalid Inputs
 describe('Property 1: Zod Schema Validation Rejects Invalid Inputs', () => {
   test('authSchema rejects invalid emails and passwords < 8 chars', () => {
     fc.assert(

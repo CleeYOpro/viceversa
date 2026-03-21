@@ -34,7 +34,7 @@ export default function ChatScreen() {
     {
       id: '0',
       role: 'ai',
-      text: `Hi! I'm your CareSync AI assistant. I can help you with care questions for ${lovedOne?.name ?? 'your patient'}. What would you like to know?`,
+      text: `Hi! I'm your KomeKare AI assistant. I can help you with care questions for ${lovedOne?.name ?? 'your patient'}. What would you like to know?`,
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
@@ -90,7 +90,7 @@ export default function ChatScreen() {
             <Bot size={20} color={C.primaryContainer} />
           </View>
           <View>
-            <Text style={styles.headerTitle}>CareSync AI</Text>
+            <Text style={styles.headerTitle}>KomeKare AI</Text>
             <Text style={styles.headerSub}>Care assistant for {lovedOne?.name ?? 'your patient'}</Text>
           </View>
         </View>

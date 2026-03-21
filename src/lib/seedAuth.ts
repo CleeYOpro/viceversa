@@ -11,8 +11,8 @@ import {
 import { auth } from './firebase';
 
 const DEMO_USERS = [
-  { email: 'cleo@caresync.dev', password: 'Cleo1234!', displayName: 'Cleo' },
-  { email: 'nikhil@caresync.dev', password: 'Nikhil1234!', displayName: 'Nikhil' },
+  { email: 'cleo@komekare.dev', password: 'Cleo1234!', displayName: 'Cleo' },
+  { email: 'nikhil@komekare.dev', password: 'Nikhil1234!', displayName: 'Nikhil' },
 ];
 
 export async function seedDemoAuth() {
