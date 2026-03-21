@@ -1,0 +1,6 @@
+/node_modules
+/.kiro
+/.expo
+.env
+.env.local
+

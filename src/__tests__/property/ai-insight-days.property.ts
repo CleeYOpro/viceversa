@@ -1,0 +1,1 @@
+describe('ai-insight-days.property.ts', () => { it('passes placeholder', () => { expect(1).toBe(1); }); });

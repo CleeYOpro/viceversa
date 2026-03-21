@@ -1,0 +1,48 @@
+{
+  "name": "caresync-village",
+  "main": "expo-router/entry",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@google/generative-ai": "*",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-community/netinfo": "11.5.2",
+    "date-fns": "*",
+    "expo": "*",
+    "expo-image-picker": "*",
+    "expo-notifications": "*",
+    "expo-print": "*",
+    "expo-router": "*",
+    "expo-sharing": "*",
+    "expo-status-bar": "*",
+    "firebase": "*",
+    "lucide-react-native": "*",
+    "nativewind": "*",
+    "react": "19.2.0",
+    "react-hook-form": "*",
+    "react-native": "0.83.2",
+    "react-native-calendars": "*",
+    "react-native-safe-area-context": "~5.6.2",
+    "react-native-screens": "~4.23.0",
+    "zod": "*",
+    "zustand": "*"
+  },
+  "devDependencies": {
+    "@babel/core": "*",
+    "@testing-library/react-native": "*",
+    "@types/jest": "29.5.14",
+    "@types/react": "*",
+    "fast-check": "*",
+    "jest": "*",
+    "jest-expo": "*",
+    "tailwindcss": "*",
+    "typescript": "*"
+  },
+  "private": true
+}

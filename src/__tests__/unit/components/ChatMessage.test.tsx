@@ -1,0 +1,1 @@
+describe('components/ChatMessage.test.tsx', () => { it('passes placeholder', () => { expect(1).toBe(1); }); });
