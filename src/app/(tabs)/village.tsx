@@ -1,18 +1,77 @@
-import React from 'react';
+import React, { useMemo, useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
 } from 'react-native';
-import { useVillageStore } from '../../stores/useVillageStore';
+import {
+  useVillageStore,
+  MOCK_MEDS,
+  HEALTH_HISTORY,
+} from '../../stores/useVillageStore';
 import { useRouter } from 'expo-router';
 import {
   Brain, TrendingUp, Activity, AlertCircle,
   CheckCircle, Settings, Bell, MessageCircle,
 } from 'lucide-react-native';
+import { useFirestore } from '../../hooks/useFirestore';
+import type { Medication, HealthLog } from '../../types';
+import { buildAlertsFromUserData, MockAlert, UserContextJson } from '../../lib/alerts';
 import C from '../../constants/colors';
 
 export default function AlertsScreen() {
-  const { lovedOne } = useVillageStore();
+  const { lovedOne, activeVillageId, villages } = useVillageStore();
   const router = useRouter();
+  const activeVillage = villages.find(v => v.id === activeVillageId);
+  const { data: medications } = useFirestore<Medication>(
+    activeVillageId ? `villages/${activeVillageId}/medications` : ''
+  );
+  const { data: logs } = useFirestore<HealthLog>(
+    activeVillageId ? `villages/${activeVillageId}/logs` : ''
+  );
+
+  const userContext: UserContextJson = useMemo(() => {
+    const patient = lovedOne ?? {
+      name: 'Patient',
+      dob: '',
+      conditions: [],
+      allergies: [],
+      emergencyContact: { name: '', phone: '', relationship: '' },
+    };
+    const firestoreMeds = medications ?? [];
+    const firestoreLogs = logs ?? [];
+    const rawMockMeds = activeVillageId ? MOCK_MEDS[activeVillageId] : null;
+    const rawMockHistory = activeVillageId ? HEALTH_HISTORY[activeVillageId] : null;
+    const mockMeds = Array.isArray(rawMockMeds) ? rawMockMeds : [];
+    const mockHistory = Array.isArray(rawMockHistory) ? rawMockHistory : [];
+    const meds = firestoreMeds.length > 0 ? firestoreMeds : (mockMeds.map(m => ({
+      id: '', name: m.name, dosage: m.dose, frequency: 'daily' as const, scheduleTimes: [m.time], notes: m.taken ? 'Taken' : 'Pending',
+    })) as Medication[]);
+    const logList = firestoreLogs.length > 0 ? firestoreLogs : (mockHistory.map(h => ({
+      id: '', type: 'note' as const, notes: `${h.date}: BP ${h.bp}, glucose ${h.glucose}, mood ${h.mood}. ${h.notes}`,
+      timestamp: { toDate: () => new Date(h.date) } as any, authorId: '',
+    })) as HealthLog[]);
+    return {
+      patient,
+      village: { id: activeVillageId ?? '', name: activeVillage?.name ?? patient.name },
+      medications: meds,
+      logs: logList,
+      healthHistory: mockHistory.map((h: { date: string; bp: string; glucose: number; mood: string; notes: string }) => ({ date: h.date, bp: h.bp, glucose: h.glucose, mood: h.mood, notes: h.notes })),
+    };
+  }, [lovedOne, activeVillageId, activeVillage?.name, medications, logs]);
+
+  const [alerts, setAlerts] = useState<MockAlert[]>([]);
+  const [alertsLoading, setAlertsLoading] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    setAlertsLoading(true);
+    buildAlertsFromUserData(userContext).then(a => {
+      if (!cancelled) setAlerts(a);
+    }).finally(() => { if (!cancelled) setAlertsLoading(false); });
+    return () => { cancelled = true; };
+  }, [userContext]);
+  const aiAlerts = alerts.filter((a): a is MockAlert => a.type === 'ai_insight' || a.type === 'vitals_trend');
+  const gridAlerts = alerts.filter((a): a is MockAlert => a.type === 'sensor' || a.type === 'medication');
+  const resolvedAlerts = alerts.filter((a): a is MockAlert => a.type === 'resolved');
+
   const name = lovedOne?.name ?? 'Patient';
 
   return (
@@ -31,6 +90,12 @@ export default function AlertsScreen() {
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {alertsLoading && (
+          <View style={styles.loadingRow}>
+            <Text style={styles.loadingText}>Loading AI alerts...</Text>
+          </View>
+        )}
+
         {/* Page heading */}
         <View style={styles.pageHeader}>
           <Text style={styles.eyebrow}>SYSTEM PULSE</Text>
@@ -43,92 +108,99 @@ export default function AlertsScreen() {
           </View>
         </View>
 
-        {/* AI Insight */}
-        <View style={styles.aiCard}>
-          <View style={styles.aiIconWrap}>
-            <Brain size={28} color={C.tertiary} />
-          </View>
-          <View style={styles.cardBody}>
-            <View style={styles.cardTopRow}>
-              <Text style={styles.aiEyebrow}>AI INTELLIGENCE</Text>
-              <Text style={styles.cardTime}>Today, 4:12 PM</Text>
+        {/* AI / Vitals cards — from user JSON */}
+        {aiAlerts.map((a) => (
+          <View
+            key={a.id}
+            style={a.type === 'vitals_trend' ? styles.bpCard : styles.aiCard}
+          >
+            <View style={a.type === 'vitals_trend' ? styles.bpIconWrap : styles.aiIconWrap}>
+              {a.type === 'vitals_trend' ? (
+                <TrendingUp size={28} color={C.primaryContainer} />
+              ) : (
+                <Brain size={28} color={C.tertiary} />
+              )}
             </View>
-            <Text style={styles.cardTitle}>Confusion events cluster between 4–6pm</Text>
-            <TouchableOpacity style={styles.secondaryBtn}>
-              <Text style={styles.secondaryBtnText}>Log Observation</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* BP Trend */}
-        <View style={styles.bpCard}>
-          <View style={styles.bpIconWrap}>
-            <TrendingUp size={28} color={C.primaryContainer} />
-          </View>
-          <View style={styles.cardBody}>
-            <View style={styles.cardTopRow}>
-              <Text style={styles.bpEyebrow}>VITALS TREND</Text>
-              <Text style={styles.cardTime}>3 days ago</Text>
+            <View style={styles.cardBody}>
+              <View style={styles.cardTopRow}>
+                <Text style={a.type === 'vitals_trend' ? styles.bpEyebrow : styles.aiEyebrow}>
+                  {a.eyebrow}
+                </Text>
+                <Text style={styles.cardTime}>{a.timestamp}</Text>
+              </View>
+              <Text style={styles.cardTitle}>{a.title}</Text>
+              {a.primaryAction && (
+                <TouchableOpacity style={styles.primaryBtn}>
+                  <Text style={styles.primaryBtnText}>{a.primaryAction}</Text>
+                </TouchableOpacity>
+              )}
+              {a.secondaryAction && (
+                <TouchableOpacity style={styles.secondaryBtn}>
+                  <Text style={styles.secondaryBtnText}>{a.secondaryAction}</Text>
+                </TouchableOpacity>
+              )}
             </View>
-            <Text style={styles.cardTitle}>BP high 3 days in a row</Text>
-            <TouchableOpacity style={styles.primaryBtn}>
-              <Text style={styles.primaryBtnText}>Notify Doctor</Text>
-            </TouchableOpacity>
           </View>
-        </View>
+        ))}
 
-        {/* 2-col grid */}
+        {/* 2-col grid — sensor & medication alerts */}
         <View style={styles.grid}>
-          {/* Sensor */}
-          <View style={styles.gridCard}>
-            <View style={styles.gridCardHeader}>
-              <View style={styles.gridIconWrap}>
-                <Activity size={20} color={C.onSurface} />
+          {gridAlerts.map((a) => (
+            <View key={a.id} style={styles.gridCard}>
+              <View style={styles.gridCardHeader}>
+                <View
+                  style={[
+                    styles.gridIconWrap,
+                    a.type === 'medication' && { backgroundColor: C.errorContainer },
+                  ]}
+                >
+                  {a.type === 'medication' ? (
+                    <AlertCircle size={20} color={C.error} />
+                  ) : (
+                    <Activity size={20} color={C.onSurface} />
+                  )}
+                </View>
+                <Text
+                  style={[styles.gridEyebrow, a.type === 'medication' && { color: C.error }]}
+                >
+                  {a.eyebrow}
+                </Text>
               </View>
-              <Text style={styles.gridEyebrow}>SENSOR ALERT</Text>
+              <Text style={styles.gridTitle}>{a.title}</Text>
+              {a.primaryAction && (
+                <View style={styles.gridBtns}>
+                  <TouchableOpacity style={styles.gridBtnPrimary}>
+                    <Text style={styles.gridBtnPrimaryText}>{a.primaryAction}</Text>
+                  </TouchableOpacity>
+                  {a.secondaryAction && (
+                    <TouchableOpacity style={styles.gridBtnSecondary}>
+                      <Text style={styles.gridBtnSecondaryText}>{a.secondaryAction}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+              {a.footer && (
+                <View style={styles.gridFooter}>
+                  <Text style={styles.gridFooterText}>{a.footer}</Text>
+                </View>
+              )}
             </View>
-            <Text style={styles.gridTitle}>No activity logged for 8 hours</Text>
-            <View style={styles.gridBtns}>
-              <TouchableOpacity style={styles.gridBtnPrimary}>
-                <Text style={styles.gridBtnPrimaryText}>Ping Caregiver</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.gridBtnSecondary}>
-                <Text style={styles.gridBtnSecondaryText}>I'm checking</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Medication */}
-          <View style={styles.gridCard}>
-            <View style={styles.gridCardHeader}>
-              <View style={[styles.gridIconWrap, { backgroundColor: C.errorContainer }]}>
-                <AlertCircle size={20} color={C.error} />
-              </View>
-              <Text style={[styles.gridEyebrow, { color: C.error }]}>URGENT MEDICATION</Text>
-            </View>
-            <Text style={styles.gridTitle}>Missed evening dose detected</Text>
-            <View style={styles.gridFooter}>
-              <Text style={styles.gridFooterText}>Protocol: Remind via Voice Hub</Text>
-            </View>
-          </View>
+          ))}
         </View>
 
-        {/* Past 24h */}
+        {/* Past 24h — resolved (from logs or mock) */}
         <View style={styles.historyCard}>
           <View style={styles.historyHeader}>
             <Text style={styles.historyTitle}>Past 24 Hours</Text>
-            <Text style={styles.historyCount}>12 Resolved</Text>
+            <Text style={styles.historyCount}>{resolvedAlerts.length} Resolved</Text>
           </View>
-          {[
-            { label: 'Hydration Goal Met', time: '11:00 AM' },
-            { label: 'Morning Meds Confirmed', time: '08:15 AM' },
-          ].map((item, i) => (
-            <View key={i} style={styles.historyRow}>
+          {resolvedAlerts.map((item) => (
+            <View key={item.id} style={styles.historyRow}>
               <View style={styles.historyLeft}>
                 <CheckCircle size={20} color={C.secondary} />
-                <Text style={styles.historyLabel}>{item.label}</Text>
+                <Text style={styles.historyLabel}>{item.title}</Text>
               </View>
-              <Text style={styles.historyTime}>{item.time}</Text>
+              <Text style={styles.historyTime}>{item.timestamp}</Text>
             </View>
           ))}
         </View>
@@ -255,4 +327,7 @@ const styles = StyleSheet.create({
   historyLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   historyLabel: { fontSize: 14, fontWeight: '500', color: C.onSurface },
   historyTime: { fontSize: 12, color: C.onSurfaceVariant },
+
+  loadingRow: { paddingVertical: 16, alignItems: 'center' },
+  loadingText: { fontSize: 14, color: C.onSurfaceVariant },
 });

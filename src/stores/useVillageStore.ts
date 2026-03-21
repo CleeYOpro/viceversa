@@ -9,6 +9,7 @@ export const MOCK_VILLAGE_ID_2 = 'village_harold';
 const MOCK_VILLAGES: Village[] = [
   {
     id: MOCK_VILLAGE_ID,
+    patientId: MOCK_VILLAGE_ID,
     name: 'Eleanor',
     createdBy: 'user_cleo',
     createdAt: { seconds: 1700000000, nanoseconds: 0 } as any,
@@ -16,6 +17,7 @@ const MOCK_VILLAGES: Village[] = [
   },
   {
     id: MOCK_VILLAGE_ID_2,
+    patientId: MOCK_VILLAGE_ID_2,
     name: 'Harold',
     createdBy: 'user_nikhil',
     createdAt: { seconds: 1700000100, nanoseconds: 0 } as any,

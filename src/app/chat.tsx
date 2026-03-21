@@ -5,10 +5,15 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, Send, Bot } from 'lucide-react-native';
-import { useVillageStore } from '../stores/useVillageStore';
+import {
+  useVillageStore,
+  MOCK_MEDS,
+  HEALTH_HISTORY,
+} from '../stores/useVillageStore';
 import { useAuthStore } from '../stores/useAuthStore';
+import { useFirestore } from '../hooks/useFirestore';
 import { askAI } from '../lib/gemini';
-import { HealthLog } from '../types';
+import type { Medication, HealthLog } from '../types';
 import C from '../constants/colors';
 
 interface Message {
@@ -26,9 +31,15 @@ const SUGGESTED = [
 
 export default function ChatScreen() {
   const router = useRouter();
-  const { lovedOne } = useVillageStore();
+  const { lovedOne, activeVillageId } = useVillageStore();
   const { user } = useAuthStore();
   const scrollRef = useRef<ScrollView>(null);
+  const { data: medications } = useFirestore<Medication>(
+    activeVillageId ? `villages/${activeVillageId}/medications` : ''
+  );
+  const { data: logs } = useFirestore<HealthLog>(
+    activeVillageId ? `villages/${activeVillageId}/logs` : ''
+  );
 
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -55,9 +66,19 @@ export default function ChatScreen() {
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
 
     try {
-      const context = lovedOne
-        ? [{ id: 'ctx', type: 'note', notes: `Patient: ${lovedOne.name}, Conditions: ${lovedOne.conditions.join(', ')}, Allergies: ${lovedOne.allergies.join(', ')}`, timestamp: { seconds: 0, nanoseconds: 0 }, authorId: '' } as unknown as HealthLog]
-        : [];
+      const firestoreMeds = medications ?? [];
+      const firestoreLogs = logs ?? [];
+      const rawMockMeds = activeVillageId ? MOCK_MEDS[activeVillageId] : null;
+      const rawMockHistory = activeVillageId ? HEALTH_HISTORY[activeVillageId] : null;
+      const mockMeds = Array.isArray(rawMockMeds) ? rawMockMeds : [];
+      const mockHistory = Array.isArray(rawMockHistory) ? rawMockHistory : [];
+      const meds = firestoreMeds.length > 0 ? firestoreMeds : (mockMeds.map(m => ({ name: m.name, dosage: m.dose, frequency: 'daily' as const, scheduleTimes: [m.time], notes: m.taken ? 'Taken' : 'Pending' })) as Medication[]);
+      const logsForContext = firestoreLogs.length > 0 ? firestoreLogs : (mockHistory.map(h => ({ id: '', type: 'note' as const, notes: `${h.date}: BP ${h.bp}, glucose ${h.glucose}, mood ${h.mood}. ${h.notes}`, timestamp: { toDate: () => new Date(h.date) }, authorId: '' })) as HealthLog[]);
+      const context = {
+        patient: lovedOne,
+        medications: meds,
+        logs: logsForContext.slice(-15),
+      };
       const reply = await askAI(text.trim(), context);
       setMessages(prev => [...prev, {
         id: Date.now().toString() + '_ai',
@@ -65,11 +86,13 @@ export default function ChatScreen() {
         text: reply,
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       }]);
-    } catch {
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Connection error';
+      const isKey = msg.includes('API key');
       setMessages(prev => [...prev, {
         id: Date.now().toString() + '_err',
         role: 'ai',
-        text: "I'm having trouble connecting right now. Please try again in a moment.",
+        text: isKey ? msg : "I'm having trouble connecting. Check your network and try again.",
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       }]);
     } finally {
