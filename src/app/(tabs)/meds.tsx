@@ -9,6 +9,7 @@ import { Medication } from '../../types';
 import { collection, addDoc } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { scheduleMedicationReminder } from '../../lib/notifications';
+import { DrugLabelLookup } from '../../components/DrugLabelLookup';
 
 export default function MedsScreen() {
   const { activeVillageId } = useVillageStore();
@@ -41,7 +42,9 @@ export default function MedsScreen() {
       <DisclaimerBanner variant="medical" />
       <View className="flex-1 p-4">
         <Text className="text-[28px] font-bold text-gray-900 mb-4">Medications</Text>
-        
+
+        <DrugLabelLookup />
+
         <FlatList
           data={medications}
           keyExtractor={item => item.id}
