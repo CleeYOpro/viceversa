@@ -1,0 +1,173 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── Helpers ────────────────────────────────────────────────────────────
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isUser(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Check if the caller has a caregiver doc for this patient
+    function isCaregiverOf(patientId) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/patients/$(patientId)/caregivers/$(request.auth.uid));
+    }
+
+    // Check if the caller is a lead_caregiver for this patient
+    function isLeadCaregiverOf(patientId) {
+      return isSignedIn() &&
+        get(/databases/$(database)/documents/patients/$(patientId)/caregivers/$(request.auth.uid)).data.role == 'lead_caregiver';
+    }
+
+    // Check if the caller has a doctor doc for this patient (and it hasn't expired)
+    function isDoctorOf(patientId) {
+      let doctorDoc = get(/databases/$(database)/documents/patients/$(patientId)/doctors/$(request.auth.uid));
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/patients/$(patientId)/doctors/$(request.auth.uid)) &&
+        (
+          !('accessExpiresAt' in doctorDoc.data) ||
+          doctorDoc.data.accessExpiresAt > request.time
+        );
+    }
+
+    // ─── Users ───────────────────────────────────────────────────────────────
+
+    match /users/{userId} {
+      allow read: if isUser(userId);
+      allow create: if isUser(userId);
+      allow update: if isUser(userId);
+    }
+
+    // ─── Patients ────────────────────────────────────────────────────────────
+
+    match /patients/{patientId} {
+      // Caregivers: full read; only lead can write core profile
+      allow read: if isCaregiverOf(patientId);
+      allow create: if isSignedIn();
+      allow update: if isLeadCaregiverOf(patientId);
+
+      // Doctors: read-only, summary access
+      allow read: if isDoctorOf(patientId);
+
+      // ── Caregivers subcollection ──────────────────────────────────────────
+      match /caregivers/{memberId} {
+        allow read: if isCaregiverOf(patientId);
+        // Only lead caregiver can add/remove members
+        allow write: if isLeadCaregiverOf(patientId);
+        // Allow self-join via invite (handled in app with invite code check)
+        allow create: if isSignedIn() && memberId == request.auth.uid;
+      }
+
+      // ── Doctors subcollection ─────────────────────────────────────────────
+      match /doctors/{doctorId} {
+        allow read: if isCaregiverOf(patientId) || isUser(doctorId);
+        // Only lead caregiver can link/unlink doctors
+        allow write: if isLeadCaregiverOf(patientId);
+      }
+
+      // ── Medications ───────────────────────────────────────────────────────
+      match /medications/{medicationId} {
+        allow read: if isCaregiverOf(patientId) || isDoctorOf(patientId);
+        allow write: if isCaregiverOf(patientId);
+      }
+
+      // ── Dose Logs ─────────────────────────────────────────────────────────
+      match /doseLogs/{logId} {
+        allow read: if isCaregiverOf(patientId) || isDoctorOf(patientId);
+        allow write: if isCaregiverOf(patientId);
+      }
+
+      // ── Health Logs ───────────────────────────────────────────────────────
+      match /healthLogs/{logId} {
+        // Non-restricted: all caregivers + doctors can read
+        allow read: if isCaregiverOf(patientId) &&
+          (resource == null || resource.data.isRestricted == false);
+
+        // Restricted logs: only lead caregiver
+        allow read: if isLeadCaregiverOf(patientId);
+
+        // Doctors: only non-restricted
+        allow read: if isDoctorOf(patientId) &&
+          (resource == null || resource.data.isRestricted == false);
+
+        allow create: if isCaregiverOf(patientId);
+        // Only author or lead can edit/delete
+        allow update, delete: if isCaregiverOf(patientId) &&
+          (resource.data.authorId == request.auth.uid || isLeadCaregiverOf(patientId));
+      }
+
+      // ── Tasks ─────────────────────────────────────────────────────────────
+      match /tasks/{taskId} {
+        allow read: if isCaregiverOf(patientId);
+        allow create: if isCaregiverOf(patientId);
+        // Any caregiver can claim/complete; only lead or creator can fully edit
+        allow update: if isCaregiverOf(patientId);
+        allow delete: if isLeadCaregiverOf(patientId) ||
+          (isCaregiverOf(patientId) && resource.data.createdBy == request.auth.uid);
+      }
+
+      // ── Calendar ──────────────────────────────────────────────────────────
+      match /calendar/{eventId} {
+        allow read: if isCaregiverOf(patientId) || isDoctorOf(patientId);
+        allow write: if isCaregiverOf(patientId);
+      }
+
+      // ── AI Insights ───────────────────────────────────────────────────────
+      match /insights/{insightId} {
+        allow read: if isCaregiverOf(patientId) || isDoctorOf(patientId);
+        // Only backend/AI writes insights; caregivers cannot create
+        allow write: if false;
+      }
+
+      // ── Documents ─────────────────────────────────────────────────────────
+      match /documents/{docId} {
+        // Non-private: all caregivers
+        allow read: if isCaregiverOf(patientId) &&
+          (resource == null || resource.data.isPrivate == false);
+
+        // Private docs: lead caregiver only
+        allow read: if isLeadCaregiverOf(patientId);
+
+        allow create: if isCaregiverOf(patientId);
+        allow update, delete: if isLeadCaregiverOf(patientId) ||
+          (isCaregiverOf(patientId) && resource.data.uploadedBy == request.auth.uid);
+      }
+
+      // ── Help Requests ─────────────────────────────────────────────────────
+      match /helpRequests/{requestId} {
+        allow read, write: if isCaregiverOf(patientId);
+      }
+
+      // ── Doctor Exports ────────────────────────────────────────────────────
+      match /doctorExports/{exportId} {
+        allow read: if isCaregiverOf(patientId) ||
+          (isDoctorOf(patientId) && resource.data.accessedBy == request.auth.uid);
+        allow create: if isCaregiverOf(patientId);
+        // Doctors can mark export as accessed
+        allow update: if isDoctorOf(patientId) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['accessedBy', 'accessedAt']);
+      }
+    }
+
+    // ─── Villages (group chat) ────────────────────────────────────────────────
+
+    match /villages/{villageId} {
+      allow read: if isCaregiverOf(villageId);
+      allow create: if isSignedIn();
+      allow update: if isLeadCaregiverOf(villageId);
+
+      match /messages/{messageId} {
+        allow read: if isCaregiverOf(villageId);
+        allow create: if isCaregiverOf(villageId) &&
+          request.resource.data.senderId == request.auth.uid;
+        allow update, delete: if false;
+      }
+    }
+  }
+}
