@@ -6,6 +6,8 @@ import { Medication, Task } from '../types';
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
   }),
@@ -39,6 +41,7 @@ export async function scheduleMedicationReminder(med: Medication) {
         body: `It is time to take ${med.name} (${med.dosage})`,
       },
       trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.CALENDAR,
         hour: hours,
         minute: minutes,
         repeats: true,
@@ -57,7 +60,10 @@ export async function scheduleTaskReminder(task: Task) {
         title: 'Task Reminder',
         body: `Your task "${task.title}" is due now.`,
       },
-      trigger: date,
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date,
+      },
     });
   }
 }
