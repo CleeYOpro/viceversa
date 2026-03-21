@@ -3,23 +3,30 @@
     "strict": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": [
+        "./src/*"
+      ]
     },
     "esModuleInterop": true,
     "jsx": "react-native",
-    "lib": ["esnext", "dom"],
+    "lib": [
+      "esnext",
+      "dom"
+    ],
     "moduleResolution": "bundler",
     "target": "esnext",
     "allowJs": true,
     "resolveJsonModule": true,
     "skipLibCheck": true,
-    "types": ["nativewind/types", "jest"]
+    "types": [
+      "nativewind/types",
+      "jest"
+    ]
   },
   "include": [
     "**/*.ts",
     "**/*.tsx",
-    ".expo/types/**/*.ts",
-    "expo-env.d.ts",
     "app.d.ts"
-  ]
+  ],
+  "extends": "expo/tsconfig.base.json"
 }
