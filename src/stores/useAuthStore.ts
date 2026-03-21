@@ -1,24 +1,23 @@
-import { create } from 'zustand';
+﻿import { create } from 'zustand';
+import {
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile,
+  signOut as firebaseSignOut,
+  onAuthStateChanged,
+} from 'firebase/auth';
+import { auth } from '../lib/firebase';
 
-// Mock users — no Firebase auth needed
-const MOCK_USERS: Record<string, { uid: string; email: string; displayName: string; password: string }> = {
-  'cleo@caresync.dev': {
-    uid: 'user_cleo',
-    email: 'cleo@caresync.dev',
-    displayName: 'Cleo',
-    password: 'Cleo1234!',
-  },
-  'nikhil@caresync.dev': {
-    uid: 'user_nikhil',
-    email: 'nikhil@caresync.dev',
-    displayName: 'Nikhil',
-    password: 'Nikhil1234!',
-  },
-};
+interface AuthUser {
+  uid: string;
+  email: string;
+  displayName: string;
+}
 
 interface AuthState {
-  user: { uid: string; email: string; displayName: string } | null;
+  user: AuthUser | null;
   loading: boolean;
+  init: () => () => void;
   signIn: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, displayName: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -26,26 +25,61 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>()((set) => ({
   user: null,
-  loading: false,
+  loading: true,
+
+  init: () => {
+    const unsub = onAuthStateChanged(auth, (firebaseUser) => {
+      if (firebaseUser) {
+        set({
+          user: {
+            uid: firebaseUser.uid,
+            email: firebaseUser.email ?? '',
+            displayName: firebaseUser.displayName ?? '',
+          },
+          loading: false,
+        });
+      } else {
+        set({ user: null, loading: false });
+      }
+    });
+    return unsub;
+  },
 
   signIn: async (email, password) => {
     set({ loading: true });
-    await new Promise(r => setTimeout(r, 400)); // simulate network
-    const found = MOCK_USERS[email.toLowerCase().trim()];
-    if (!found || found.password !== password) {
+    try {
+      const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
+      set({
+        user: {
+          uid: cred.user.uid,
+          email: cred.user.email ?? '',
+          displayName: cred.user.displayName ?? '',
+        },
+        loading: false,
+      });
+    } catch {
       set({ loading: false });
       throw new Error('Invalid email or password');
     }
-    set({ user: { uid: found.uid, email: found.email, displayName: found.displayName }, loading: false });
   },
 
   register: async (email, password, displayName) => {
     set({ loading: true });
-    await new Promise(r => setTimeout(r, 400));
-    set({ user: { uid: `user_${Date.now()}`, email, displayName }, loading: false });
+    try {
+      const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
+      await updateProfile(cred.user, { displayName });
+      set({
+        user: { uid: cred.user.uid, email: cred.user.email ?? '', displayName },
+        loading: false,
+      });
+    } catch (e) {
+      set({ loading: false });
+      throw e;
+    }
   },
 
   signOut: async () => {
+    await firebaseSignOut(auth);
     set({ user: null, loading: false });
   },
 }));

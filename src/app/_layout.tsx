@@ -1,14 +1,29 @@
 import React, { useEffect } from 'react';
 import { Stack, useRouter, useSegments, useNavigationContainerRef } from 'expo-router';
 import { useAuthStore } from '../stores/useAuthStore';
+import { seedDemoAuth } from '../lib/seedAuth';
+import { seedDemoPatients } from '../lib/seedFirestore';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import C from '../constants/colors';
 
 export default function RootLayout() {
-  const { user, loading } = useAuthStore();
+  const { user, loading, init } = useAuthStore();
   const segments = useSegments();
   const router = useRouter();
   const navigationRef = useNavigationContainerRef();
+
+  useEffect(() => {
+    const unsub = init();
+    seedDemoAuth();
+    return unsub;
+  }, []);
+
+  // Seed Firestore data once user is authenticated
+  useEffect(() => {
+    if (user) {
+      seedDemoPatients().catch(console.error);
+    }
+  }, [user?.uid]);
 
   useEffect(() => {
     if (loading) return;

@@ -6,14 +6,19 @@ import { useVillageStore } from '../../stores/useVillageStore';
 import { useRouter } from 'expo-router';
 import {
   Brain, TrendingUp, Activity, AlertCircle,
-  CheckCircle, Settings, Bell, MessageCircle,
+  CheckCircle, Settings, MessageCircle,
 } from 'lucide-react-native';
 import C from '../../constants/colors';
 
 export default function AlertsScreen() {
-  const { lovedOne } = useVillageStore();
+  const { lovedOne, insights, tasks, healthLogs } = useVillageStore();
   const router = useRouter();
   const name = lovedOne?.name ?? 'Patient';
+
+  const aiInsight = insights.find(i => i.category === 'pattern') ?? insights[0];
+  const trendInsight = insights.find(i => i.category === 'trend');
+  const missedTasks = tasks.filter(t => t.status === 'pending' && t.category === 'medication');
+  const recentLogs = healthLogs.slice(0, 2);
 
   return (
     <View style={styles.screen}>
@@ -51,9 +56,9 @@ export default function AlertsScreen() {
           <View style={styles.cardBody}>
             <View style={styles.cardTopRow}>
               <Text style={styles.aiEyebrow}>AI INTELLIGENCE</Text>
-              <Text style={styles.cardTime}>Today, 4:12 PM</Text>
+              <Text style={styles.cardTime}>Today</Text>
             </View>
-            <Text style={styles.cardTitle}>Confusion events cluster between 4–6pm</Text>
+            <Text style={styles.cardTitle}>{aiInsight?.summary ?? 'No insights yet'}</Text>
             <TouchableOpacity style={styles.secondaryBtn}>
               <Text style={styles.secondaryBtnText}>Log Observation</Text>
             </TouchableOpacity>
@@ -61,6 +66,7 @@ export default function AlertsScreen() {
         </View>
 
         {/* BP Trend */}
+        {trendInsight && (
         <View style={styles.bpCard}>
           <View style={styles.bpIconWrap}>
             <TrendingUp size={28} color={C.primaryContainer} />
@@ -68,23 +74,21 @@ export default function AlertsScreen() {
           <View style={styles.cardBody}>
             <View style={styles.cardTopRow}>
               <Text style={styles.bpEyebrow}>VITALS TREND</Text>
-              <Text style={styles.cardTime}>3 days ago</Text>
+              <Text style={styles.cardTime}>Recent</Text>
             </View>
-            <Text style={styles.cardTitle}>BP high 3 days in a row</Text>
+            <Text style={styles.cardTitle}>{trendInsight.summary}</Text>
             <TouchableOpacity style={styles.primaryBtn}>
               <Text style={styles.primaryBtnText}>Notify Doctor</Text>
             </TouchableOpacity>
           </View>
         </View>
+        )}
 
         {/* 2-col grid */}
         <View style={styles.grid}>
-          {/* Sensor */}
           <View style={styles.gridCard}>
             <View style={styles.gridCardHeader}>
-              <View style={styles.gridIconWrap}>
-                <Activity size={20} color={C.onSurface} />
-              </View>
+              <View style={styles.gridIconWrap}><Activity size={20} color={C.onSurface} /></View>
               <Text style={styles.gridEyebrow}>SENSOR ALERT</Text>
             </View>
             <Text style={styles.gridTitle}>No activity logged for 8 hours</Text>
@@ -98,7 +102,6 @@ export default function AlertsScreen() {
             </View>
           </View>
 
-          {/* Medication */}
           <View style={styles.gridCard}>
             <View style={styles.gridCardHeader}>
               <View style={[styles.gridIconWrap, { backgroundColor: C.errorContainer }]}>
@@ -106,29 +109,34 @@ export default function AlertsScreen() {
               </View>
               <Text style={[styles.gridEyebrow, { color: C.error }]}>URGENT MEDICATION</Text>
             </View>
-            <Text style={styles.gridTitle}>Missed evening dose detected</Text>
+            <Text style={styles.gridTitle}>
+              {missedTasks.length > 0 ? `${missedTasks.length} pending medication task(s)` : 'All medications on track'}
+            </Text>
             <View style={styles.gridFooter}>
               <Text style={styles.gridFooterText}>Protocol: Remind via Voice Hub</Text>
             </View>
           </View>
         </View>
 
-        {/* Past 24h */}
+        {/* Recent logs */}
         <View style={styles.historyCard}>
           <View style={styles.historyHeader}>
-            <Text style={styles.historyTitle}>Past 24 Hours</Text>
-            <Text style={styles.historyCount}>12 Resolved</Text>
+            <Text style={styles.historyTitle}>Recent Logs</Text>
+            <Text style={styles.historyCount}>{healthLogs.length} Total</Text>
           </View>
-          {[
-            { label: 'Hydration Goal Met', time: '11:00 AM' },
-            { label: 'Morning Meds Confirmed', time: '08:15 AM' },
-          ].map((item, i) => (
-            <View key={i} style={styles.historyRow}>
+          {recentLogs.map((log, i) => (
+            <View key={log.id ?? i} style={styles.historyRow}>
               <View style={styles.historyLeft}>
                 <CheckCircle size={20} color={C.secondary} />
-                <Text style={styles.historyLabel}>{item.label}</Text>
+                <Text style={styles.historyLabel} numberOfLines={1}>{log.notes?.split('\n')[0] ?? log.type}</Text>
               </View>
-              <Text style={styles.historyTime}>{item.time}</Text>
+              <Text style={styles.historyTime}>
+                {log.timestamp ? (() => {
+                  const ts = log.timestamp as any;
+                  const d = ts.toDate ? ts.toDate() : new Date(ts.seconds * 1000);
+                  return d.toLocaleDateString();
+                })() : ''}
+              </Text>
             </View>
           ))}
         </View>

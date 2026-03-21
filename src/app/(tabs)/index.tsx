@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  ScrollView, Modal, Pressable,
+  ScrollView, Modal, Pressable, ActivityIndicator,
 } from 'react-native';
 import {
-  Bell, MessageCircle, UserCog, RefreshCw, X,
+  MessageCircle, UserCog, RefreshCw, X,
   Heart, Droplets, Thermometer, Wind,
   Pill, CheckCircle2, Clock, AlertTriangle,
   ChevronRight, Plus, Brain,
@@ -12,36 +12,28 @@ import {
 import { useAuthStore } from '../../stores/useAuthStore';
 import { useVillageStore } from '../../stores/useVillageStore';
 import { useRouter } from 'expo-router';
+import { doc, updateDoc } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 import C from '../../constants/colors';
+import type { Task, HealthLog } from '../../types';
 
-const VITALS = [
-  { label: 'Heart Rate', value: '72', unit: 'bpm', icon: Heart, color: '#e53935', bg: '#fdecea' },
-  { label: 'Blood Pressure', value: '128/82', unit: 'mmHg', icon: Droplets, color: C.tertiary, bg: '#e3f2fd' },
-  { label: 'Temperature', value: '98.4', unit: '°F', icon: Thermometer, color: '#f57c00', bg: '#fff3e0' },
-  { label: 'SpO2', value: '97', unit: '%', icon: Wind, color: '#2e7d32', bg: '#e8f5e9' },
-];
-
-const TASKS = [
-  { id: '1', title: 'Morning Medications', time: '8:00 AM', done: true, urgent: false },
-  { id: '2', title: 'Blood Pressure Check', time: '10:00 AM', done: false, urgent: false },
-  { id: '3', title: 'Physical Therapy', time: '2:00 PM', done: false, urgent: false },
-  { id: '4', title: 'Evening Medications', time: '6:00 PM', done: false, urgent: true },
-];
-
-const ALERTS = [
-  { id: '1', text: 'BP trending high — 3 readings above 130 this week', level: 'warn' },
-  { id: '2', text: 'Metformin refill due in 4 days', level: 'info' },
-];
+function getLatestVitals(logs: HealthLog[]) {
+  const bpLog = logs.find(l => l.vitals?.bp);
+  const glucoseLog = logs.find(l => l.vitals?.glucose);
+  return {
+    bp: bpLog?.vitals?.bp ?? '—',
+    glucose: glucoseLog?.vitals?.glucose?.toString() ?? '—',
+  };
+}
 
 export default function Dashboard() {
   const { user } = useAuthStore();
-  const { villages, activeVillageId, lovedOne, setActiveVillage } = useVillageStore();
+  const { villages, activePatientId, activeVillageId, lovedOne, patient,
+          tasks, healthLogs, insights, loading, setActiveVillage } = useVillageStore();
   const router = useRouter();
   const [sheetVisible, setSheetVisible] = useState(false);
-  const [tasks, setTasks] = useState(TASKS);
 
-  const activeVillage = villages.find(v => v.id === activeVillageId);
-  const patientName = lovedOne?.name ?? activeVillage?.name ?? 'Patient';
+  const patientName = lovedOne?.name ?? patient?.name ?? 'Patient';
   const greeting = (() => {
     const h = new Date().getHours();
     if (h < 12) return 'Good morning';
@@ -49,11 +41,29 @@ export default function Dashboard() {
     return 'Good evening';
   })();
 
-  const doneTasks = tasks.filter(t => t.done).length;
+  const vitals = getLatestVitals(healthLogs);
+  const todayTasks = tasks.slice(0, 5);
+  const doneTasks = todayTasks.filter(t => t.status === 'completed').length;
+  const topInsight = insights[0];
+
+  const VITALS_DISPLAY = [
+    { label: 'Heart Rate', value: '72', unit: 'bpm', icon: Heart, color: '#e53935', bg: '#fdecea' },
+    { label: 'Blood Pressure', value: vitals.bp, unit: 'mmHg', icon: Droplets, color: C.tertiary, bg: '#e3f2fd' },
+    { label: 'Temperature', value: '98.4', unit: '°F', icon: Thermometer, color: '#f57c00', bg: '#fff3e0' },
+    { label: 'SpO2', value: '97', unit: '%', icon: Wind, color: '#2e7d32', bg: '#e8f5e9' },
+  ];
+
+  const toggleTask = async (task: Task) => {
+    const newStatus = task.status === 'completed' ? 'pending' : 'completed';
+    try {
+      await updateDoc(doc(db, 'patients', activePatientId, 'tasks', task.id), { status: newStatus });
+      // Optimistic update via reload
+      useVillageStore.getState().loadPatientData(activePatientId);
+    } catch (e) { console.error(e); }
+  };
 
   return (
     <View style={styles.screen}>
-      {/* Top App Bar */}
       <View style={styles.topBar}>
         <View style={styles.topBarLeft}>
           <TouchableOpacity style={styles.avatar} onPress={() => setSheetVisible(true)}>
@@ -68,30 +78,26 @@ export default function Dashboard() {
           <TouchableOpacity style={styles.iconBtn} onPress={() => router.push('/chat')}>
             <MessageCircle size={22} color={C.onSurface} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.iconBtn} onPress={() => router.push('/(tabs)/village')}>
-            <Bell size={22} color={C.onSurface} />
-          </TouchableOpacity>
         </View>
       </View>
 
+      {loading ? (
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator size="large" color={C.primary} />
+        </View>
+      ) : (
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-
-        {/* Greeting */}
         <Text style={styles.greeting}>{greeting}, {user?.displayName ?? 'Caregiver'}</Text>
         <Text style={styles.greetingSub}>Here's {patientName}'s care summary for today</Text>
 
-        {/* AI Alert Banner */}
-        {ALERTS.length > 0 && (
+        {topInsight && (
           <TouchableOpacity style={styles.alertBanner} onPress={() => router.push('/(tabs)/village')}>
-            <View style={styles.alertBannerIcon}>
-              <Brain size={18} color={C.primary} />
-            </View>
-            <Text style={styles.alertBannerText} numberOfLines={2}>{ALERTS[0].text}</Text>
+            <View style={styles.alertBannerIcon}><Brain size={18} color={C.primary} /></View>
+            <Text style={styles.alertBannerText} numberOfLines={2}>{topInsight.summary}</Text>
             <ChevronRight size={16} color={C.primary} />
           </TouchableOpacity>
         )}
 
-        {/* Vitals Grid */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Today's Vitals</Text>
           <TouchableOpacity onPress={() => router.push('/(tabs)/log')}>
@@ -99,7 +105,7 @@ export default function Dashboard() {
           </TouchableOpacity>
         </View>
         <View style={styles.vitalsGrid}>
-          {VITALS.map((v) => (
+          {VITALS_DISPLAY.map((v) => (
             <View key={v.label} style={[styles.vitalCard, { backgroundColor: v.bg }]}>
               <v.icon size={18} color={v.color} />
               <Text style={[styles.vitalValue, { color: v.color }]}>{v.value}</Text>
@@ -109,70 +115,59 @@ export default function Dashboard() {
           ))}
         </View>
 
-        {/* Today's Tasks */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Today's Tasks</Text>
           <View style={styles.taskProgress}>
-            <Text style={styles.taskProgressText}>{doneTasks}/{tasks.length}</Text>
+            <Text style={styles.taskProgressText}>{doneTasks}/{todayTasks.length}</Text>
           </View>
         </View>
         <View style={styles.taskList}>
-          {tasks.map((task) => (
-            <TouchableOpacity
-              key={task.id}
-              style={[styles.taskRow, task.done && styles.taskRowDone]}
-              onPress={() => setTasks(prev => prev.map(t => t.id === task.id ? { ...t, done: !t.done } : t))}
-            >
-              <View style={[styles.taskCheck, task.done && styles.taskCheckDone]}>
-                {task.done && <CheckCircle2 size={20} color={C.primaryContainer} />}
-                {!task.done && task.urgent && <AlertTriangle size={16} color={C.error} />}
-                {!task.done && !task.urgent && <Clock size={16} color={C.onSurfaceVariant} />}
-              </View>
-              <View style={styles.taskInfo}>
-                <Text style={[styles.taskTitle, task.done && styles.taskTitleDone]}>{task.title}</Text>
-                <Text style={styles.taskTime}>{task.time}</Text>
-              </View>
-              {task.urgent && !task.done && (
-                <View style={styles.urgentBadge}>
-                  <Text style={styles.urgentText}>URGENT</Text>
+          {todayTasks.map((task) => {
+            const done = task.status === 'completed';
+            const urgent = task.category === 'medication';
+            return (
+              <TouchableOpacity
+                key={task.id}
+                style={[styles.taskRow, done && styles.taskRowDone]}
+                onPress={() => toggleTask(task)}
+              >
+                <View style={[styles.taskCheck, done && styles.taskCheckDone]}>
+                  {done && <CheckCircle2 size={20} color={C.primaryContainer} />}
+                  {!done && urgent && <AlertTriangle size={16} color={C.error} />}
+                  {!done && !urgent && <Clock size={16} color={C.onSurfaceVariant} />}
                 </View>
-              )}
-            </TouchableOpacity>
-          ))}
+                <View style={styles.taskInfo}>
+                  <Text style={[styles.taskTitle, done && styles.taskTitleDone]}>{task.title}</Text>
+                  <Text style={styles.taskTime}>{task.assigneeName ?? ''}</Text>
+                </View>
+                {urgent && !done && (
+                  <View style={styles.urgentBadge}><Text style={styles.urgentText}>URGENT</Text></View>
+                )}
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
-        {/* Quick Actions */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Quick Actions</Text>
-        </View>
+        <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Quick Actions</Text></View>
         <View style={styles.quickActions}>
           <TouchableOpacity style={styles.quickBtn} onPress={() => router.push('/(tabs)/log')}>
-            <View style={[styles.quickIcon, { backgroundColor: '#fdecea' }]}>
-              <Heart size={22} color="#e53935" />
-            </View>
+            <View style={[styles.quickIcon, { backgroundColor: '#fdecea' }]}><Heart size={22} color="#e53935" /></View>
             <Text style={styles.quickLabel}>Log Vitals</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.quickBtn} onPress={() => router.push('/(tabs)/meds')}>
-            <View style={[styles.quickIcon, { backgroundColor: '#fff3e0' }]}>
-              <Pill size={22} color="#f57c00" />
-            </View>
+            <View style={[styles.quickIcon, { backgroundColor: '#fff3e0' }]}><Pill size={22} color="#f57c00" /></View>
             <Text style={styles.quickLabel}>Medications</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.quickBtn} onPress={() => router.push('/chat')}>
-            <View style={[styles.quickIcon, { backgroundColor: '#f3e5f5' }]}>
-              <Brain size={22} color="#7b1fa2" />
-            </View>
+            <View style={[styles.quickIcon, { backgroundColor: '#f3e5f5' }]}><Brain size={22} color="#7b1fa2" /></View>
             <Text style={styles.quickLabel}>Ask AI</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.quickBtn} onPress={() => router.push('/(tabs)/calendar')}>
-            <View style={[styles.quickIcon, { backgroundColor: '#e8f5e9' }]}>
-              <Plus size={22} color="#2e7d32" />
-            </View>
+            <View style={[styles.quickIcon, { backgroundColor: '#e8f5e9' }]}><Plus size={22} color="#2e7d32" /></View>
             <Text style={styles.quickLabel}>Add Event</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Conditions */}
         {lovedOne?.conditions && lovedOne.conditions.length > 0 && (
           <>
             <View style={styles.sectionHeader}>
@@ -193,8 +188,8 @@ export default function Dashboard() {
 
         <View style={{ height: 100 }} />
       </ScrollView>
+      )}
 
-      {/* Patient Switcher Bottom Sheet */}
       <Modal visible={sheetVisible} transparent animationType="slide" onRequestClose={() => setSheetVisible(false)}>
         <Pressable style={styles.overlay} onPress={() => setSheetVisible(false)} />
         <View style={styles.sheet}>
@@ -205,7 +200,6 @@ export default function Dashboard() {
               <X size={20} color={C.onSurfaceVariant} />
             </TouchableOpacity>
           </View>
-
           {villages.map(v => {
             const isActive = v.id === activeVillageId;
             return (
@@ -227,33 +221,19 @@ export default function Dashboard() {
               </TouchableOpacity>
             );
           })}
-
           <View style={styles.sheetDivider} />
-
-          <TouchableOpacity
-            style={styles.sheetAction}
-            onPress={() => { setSheetVisible(false); router.push('/patient-edit'); }}
-          >
-            <View style={styles.sheetActionIcon}>
-              <UserCog size={20} color={C.primary} />
-            </View>
+          <TouchableOpacity style={styles.sheetAction} onPress={() => { setSheetVisible(false); router.push('/patient-edit'); }}>
+            <View style={styles.sheetActionIcon}><UserCog size={20} color={C.primary} /></View>
             <Text style={styles.sheetActionText}>Edit Patient Profile</Text>
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.sheetAction}
-            onPress={() => {
-              const other = villages.find(v => v.id !== activeVillageId);
-              if (other) setActiveVillage(other.id);
-              setSheetVisible(false);
-            }}
-          >
-            <View style={styles.sheetActionIcon}>
-              <RefreshCw size={20} color={C.tertiary} />
-            </View>
+          <TouchableOpacity style={styles.sheetAction} onPress={() => {
+            const other = villages.find(v => v.id !== activeVillageId);
+            if (other) setActiveVillage(other.id);
+            setSheetVisible(false);
+          }}>
+            <View style={styles.sheetActionIcon}><RefreshCw size={20} color={C.tertiary} /></View>
             <Text style={styles.sheetActionText}>Switch Patient</Text>
           </TouchableOpacity>
-
           <View style={{ height: 32 }} />
         </View>
       </Modal>
@@ -265,6 +245,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.surface },
   scroll: { flex: 1 },
   content: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 32 },
+  loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
   topBar: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -287,30 +268,23 @@ const styles = StyleSheet.create({
 
   alertBanner: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: '#fff8f0',
-    borderRadius: 16, padding: 14, marginBottom: 24,
+    backgroundColor: '#fff8f0', borderRadius: 16, padding: 14, marginBottom: 24,
     borderWidth: 1, borderColor: '#ffe0c2',
   },
   alertBannerIcon: {
     width: 32, height: 32, borderRadius: 10,
-    backgroundColor: '#fff0e0',
-    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#fff0e0', alignItems: 'center', justifyContent: 'center',
   },
   alertBannerText: { flex: 1, fontSize: 13, color: C.onSurface, fontWeight: '500', lineHeight: 18 },
 
   sectionHeader: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    marginBottom: 12,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12,
   },
   sectionTitle: { fontSize: 17, fontWeight: '700', color: C.onSurface },
   sectionLink: { fontSize: 13, color: C.primary, fontWeight: '600' },
 
-  vitalsGrid: {
-    flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 28,
-  },
-  vitalCard: {
-    width: '47%', borderRadius: 18, padding: 16, gap: 4,
-  },
+  vitalsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 28 },
+  vitalCard: { width: '47%', borderRadius: 18, padding: 16, gap: 4 },
   vitalValue: { fontSize: 22, fontWeight: '800', letterSpacing: -0.5, marginTop: 6 },
   vitalUnit: { fontSize: 11, fontWeight: '600', color: C.onSurfaceVariant },
   vitalLabel: { fontSize: 12, color: C.onSurfaceVariant, marginTop: 2 },
@@ -318,47 +292,33 @@ const styles = StyleSheet.create({
   taskList: { gap: 8, marginBottom: 28 },
   taskRow: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: C.surfaceContainerLowest,
-    borderRadius: 16, padding: 14,
+    backgroundColor: C.surfaceContainerLowest, borderRadius: 16, padding: 14,
     shadowColor: '#5a4136', shadowOpacity: 0.04, shadowRadius: 6, elevation: 1,
   },
   taskRowDone: { opacity: 0.55 },
   taskCheck: {
     width: 32, height: 32, borderRadius: 10,
-    backgroundColor: C.surfaceContainerLow,
-    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: C.surfaceContainerLow, alignItems: 'center', justifyContent: 'center',
   },
   taskCheckDone: { backgroundColor: '#e8f5e9' },
   taskInfo: { flex: 1 },
   taskTitle: { fontSize: 15, fontWeight: '600', color: C.onSurface },
   taskTitleDone: { textDecorationLine: 'line-through', color: C.onSurfaceVariant },
   taskTime: { fontSize: 12, color: C.onSurfaceVariant, marginTop: 2 },
-  urgentBadge: {
-    backgroundColor: '#fdecea', borderRadius: 8,
-    paddingHorizontal: 8, paddingVertical: 3,
-  },
+  urgentBadge: { backgroundColor: '#fdecea', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
   urgentText: { fontSize: 9, fontWeight: '800', color: C.error, letterSpacing: 0.5 },
-  taskProgress: {
-    backgroundColor: C.primaryContainer, borderRadius: 99,
-    paddingHorizontal: 10, paddingVertical: 3,
-  },
+  taskProgress: { backgroundColor: C.primaryContainer, borderRadius: 99, paddingHorizontal: 10, paddingVertical: 3 },
   taskProgressText: { fontSize: 11, fontWeight: '700', color: C.onPrimaryContainer },
 
-  quickActions: {
-    flexDirection: 'row', justifyContent: 'space-between', marginBottom: 28,
-  },
+  quickActions: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 28 },
   quickBtn: { alignItems: 'center', gap: 8, flex: 1 },
-  quickIcon: {
-    width: 56, height: 56, borderRadius: 18,
-    alignItems: 'center', justifyContent: 'center',
-  },
+  quickIcon: { width: 56, height: 56, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   quickLabel: { fontSize: 11, fontWeight: '600', color: C.onSurface, textAlign: 'center' },
 
   conditionChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 28 },
   conditionChip: {
-    backgroundColor: C.surfaceContainerLow,
-    borderRadius: 99, paddingHorizontal: 14, paddingVertical: 7,
-    borderWidth: 1, borderColor: C.outlineVariant,
+    backgroundColor: C.surfaceContainerLow, borderRadius: 99,
+    paddingHorizontal: 14, paddingVertical: 7, borderWidth: 1, borderColor: C.outlineVariant,
   },
   conditionChipText: { fontSize: 13, color: C.onSurface, fontWeight: '500' },
 
@@ -374,17 +334,14 @@ const styles = StyleSheet.create({
   },
   sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   sheetTitle: { fontSize: 20, fontWeight: '700', color: C.onSurface },
-
   patientRow: {
     flexDirection: 'row', alignItems: 'center', gap: 14,
-    paddingVertical: 14, paddingHorizontal: 16,
-    borderRadius: 16, marginBottom: 8,
+    paddingVertical: 14, paddingHorizontal: 16, borderRadius: 16, marginBottom: 8,
   },
   patientRowActive: { backgroundColor: C.surfaceContainerLow },
   patientAvatar: {
     width: 48, height: 48, borderRadius: 24,
-    backgroundColor: C.surfaceContainerHigh,
-    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: C.surfaceContainerHigh, alignItems: 'center', justifyContent: 'center',
   },
   patientAvatarActive: { backgroundColor: C.primaryContainer },
   patientAvatarText: { fontSize: 18, fontWeight: '700', color: C.onSurface },
@@ -393,7 +350,6 @@ const styles = StyleSheet.create({
   patientName: { fontSize: 16, fontWeight: '700', color: C.onSurface },
   patientRole: { fontSize: 12, color: C.onSurfaceVariant, marginTop: 2 },
   activeDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: C.primaryContainer },
-
   sheetDivider: { height: 1, backgroundColor: C.surfaceContainerHigh, marginVertical: 12 },
   sheetAction: {
     flexDirection: 'row', alignItems: 'center', gap: 14,
@@ -401,8 +357,7 @@ const styles = StyleSheet.create({
   },
   sheetActionIcon: {
     width: 40, height: 40, borderRadius: 12,
-    backgroundColor: C.surfaceContainerLow,
-    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: C.surfaceContainerLow, alignItems: 'center', justifyContent: 'center',
   },
   sheetActionText: { fontSize: 15, fontWeight: '600', color: C.onSurface },
 });

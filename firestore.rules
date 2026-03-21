@@ -121,8 +121,9 @@ service cloud.firestore {
       // ── AI Insights ───────────────────────────────────────────────────────
       match /insights/{insightId} {
         allow read: if isCaregiverOf(patientId) || isDoctorOf(patientId);
-        // Only backend/AI writes insights; caregivers cannot create
-        allow write: if false;
+        // Lead caregiver can seed/create insights; AI backend also writes here
+        allow create: if isLeadCaregiverOf(patientId) || isCaregiverOf(patientId);
+        allow update, delete: if isLeadCaregiverOf(patientId);
       }
 
       // ── Documents ─────────────────────────────────────────────────────────

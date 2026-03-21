@@ -1,81 +1,96 @@
 import React, { useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, Modal, TextInput, Platform,
+  StyleSheet, Modal, TextInput, Platform, ActivityIndicator,
 } from 'react-native';
 import { useVillageStore } from '../../stores/useVillageStore';
 import { Pill, ChevronRight, Plus, AlertTriangle } from 'lucide-react-native';
+import { addDoc, collection, Timestamp } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
+import { useAuthStore } from '../../stores/useAuthStore';
 import C from '../../constants/colors';
 
-// Seeded medications for Eleanor
-const DEMO_MEDS = [
-  { id: '1', name: 'Lisinopril', dosage: '10mg', schedule: 'Once Daily (AM)', nextDose: 42 },
-  { id: '2', name: 'Atorvastatin', dosage: '20mg', schedule: 'Once Daily (PM)', nextDose: 312 },
-  { id: '3', name: 'Metformin', dosage: '500mg', schedule: 'Twice Daily', nextDose: 42 },
-  { id: '4', name: 'Donepezil', dosage: '10mg', schedule: 'Once Daily (PM)', nextDose: 312 },
-  { id: '5', name: 'Memantine', dosage: '20mg', schedule: 'Once Daily (AM)', nextDose: 42 },
-];
+function minutesUntilNext(scheduleTimes: string[]): number {
+  if (!scheduleTimes?.length) return 999;
+  const now = new Date();
+  const nowMins = now.getHours() * 60 + now.getMinutes();
+  const times = scheduleTimes.map(t => {
+    const [h, m] = t.split(':').map(Number);
+    return h * 60 + (m || 0);
+  });
+  const future = times.filter(t => t > nowMins);
+  if (future.length) return future[0] - nowMins;
+  // next is tomorrow
+  return (24 * 60 - nowMins) + times[0];
+}
 
 export default function MedsScreen() {
-  const { lovedOne } = useVillageStore();
+  const { lovedOne, medications, loading, activePatientId } = useVillageStore();
+  const { user } = useAuthStore();
   const [modalVisible, setModalVisible] = useState(false);
   const [name, setName] = useState('');
   const [dosage, setDosage] = useState('');
-  const [meds, setMeds] = useState(DEMO_MEDS);
+  const [saving, setSaving] = useState(false);
 
-  const handleAdd = () => {
-    if (!name.trim()) return;
-    setMeds(prev => [...prev, {
-      id: String(Date.now()), name, dosage,
-      schedule: 'Once Daily', nextDose: 60,
-    }]);
-    setName(''); setDosage('');
-    setModalVisible(false);
+  const handleAdd = async () => {
+    if (!name.trim() || !activePatientId || !user) return;
+    setSaving(true);
+    try {
+      await addDoc(collection(db, 'patients', activePatientId, 'medications'), {
+        name, dosage, frequency: 'daily', scheduleTimes: ['08:00'],
+        addedBy: user.uid, createdAt: Timestamp.now(),
+      });
+      setName(''); setDosage('');
+      setModalVisible(false);
+      await useVillageStore.getState().loadPatientData(activePatientId);
+    } catch (e) { console.error(e); }
+    finally { setSaving(false); }
   };
 
-  const nextMed = meds.reduce((a, b) => a.nextDose < b.nextDose ? a : b);
+  const nextMed = medications.length
+    ? medications.reduce((a, b) =>
+        minutesUntilNext(a.scheduleTimes) < minutesUntilNext(b.scheduleTimes) ? a : b)
+    : null;
+  const nextMins = nextMed ? minutesUntilNext(nextMed.scheduleTimes) : 0;
 
   return (
     <View style={styles.screen}>
-      {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{lovedOne?.name?.[0] ?? 'E'}</Text>
+            <Text style={styles.avatarText}>{lovedOne?.name?.[0] ?? 'P'}</Text>
           </View>
-          <Text style={styles.headerTitle}>{lovedOne?.name ?? 'Eleanor'}</Text>
+          <Text style={styles.headerTitle}>{lovedOne?.name ?? 'Patient'}</Text>
         </View>
       </View>
 
+      {loading ? (
+        <View style={styles.loadingWrap}><ActivityIndicator size="large" color={C.primary} /></View>
+      ) : (
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
 
-        {/* Next Dose Hero */}
-        <View style={styles.heroCard}>
-          <Text style={styles.heroEyebrow}>NEXT SCHEDULED DOSE</Text>
-          <View style={styles.heroCountRow}>
-            <Text style={styles.heroCount}>{nextMed.nextDose}</Text>
-            <Text style={styles.heroUnit}>mins</Text>
-          </View>
-          <View style={styles.heroPill}>
-            <Pill size={20} color="#fff" />
-            <View>
-              <Text style={styles.heroPillName}>{nextMed.name}</Text>
-              <Text style={styles.heroPillSub}>{nextMed.dosage} • {nextMed.schedule}</Text>
+        {nextMed && (
+          <View style={styles.heroCard}>
+            <Text style={styles.heroEyebrow}>NEXT SCHEDULED DOSE</Text>
+            <View style={styles.heroCountRow}>
+              <Text style={styles.heroCount}>{nextMins}</Text>
+              <Text style={styles.heroUnit}>mins</Text>
             </View>
+            <View style={styles.heroPill}>
+              <Pill size={20} color="#fff" />
+              <View>
+                <Text style={styles.heroPillName}>{nextMed.name}</Text>
+                <Text style={styles.heroPillSub}>{nextMed.dosage} • {nextMed.frequency?.replace('_', ' ')}</Text>
+              </View>
+            </View>
+            <View style={styles.heroRing} />
           </View>
-          {/* Decorative ring */}
-          <View style={styles.heroRing} />
-        </View>
+        )}
 
-        {/* AI Interaction Alert */}
         <View style={styles.alertCard}>
-          <View style={styles.alertIcon}>
-            <AlertTriangle size={22} color={C.primaryContainer} />
-          </View>
+          <View style={styles.alertIcon}><AlertTriangle size={22} color={C.primaryContainer} /></View>
           <View style={styles.alertBody}>
-            <View style={styles.alertTopRow}>
-              <Text style={styles.alertEyebrow}>CARE INTELLIGENCE</Text>
-            </View>
+            <Text style={styles.alertEyebrow}>CARE INTELLIGENCE</Text>
             <Text style={styles.alertTitle}>Vitamin K Interaction Warning</Text>
             <Text style={styles.alertText}>
               Recent meal logs indicate high spinach intake. Monitor for interactions with{' '}
@@ -84,29 +99,23 @@ export default function MedsScreen() {
           </View>
         </View>
 
-        {/* Active Medications */}
         <View style={styles.sectionHeader}>
           <View>
             <Text style={styles.sectionTitle}>Active Medications</Text>
-            <Text style={styles.sectionSub}>{meds.length} Prescriptions active this week</Text>
+            <Text style={styles.sectionSub}>{medications.length} Prescriptions active</Text>
           </View>
-          <TouchableOpacity>
-            <Text style={styles.viewHistory}>View History</Text>
-          </TouchableOpacity>
         </View>
 
         <View style={styles.medList}>
-          {meds.map(med => (
+          {medications.map(med => (
             <TouchableOpacity key={med.id} style={styles.medCard}>
-              <View style={styles.medIconWrap}>
-                <Pill size={28} color={C.primary} />
-              </View>
+              <View style={styles.medIconWrap}><Pill size={28} color={C.primary} /></View>
               <View style={styles.medInfo}>
                 <Text style={styles.medName}>{med.name}</Text>
                 <View style={styles.medMeta}>
                   <Text style={styles.medMetaText}>{med.dosage}</Text>
                   <View style={styles.metaDot} />
-                  <Text style={styles.medMetaText}>{med.schedule}</Text>
+                  <Text style={styles.medMetaText}>{med.scheduleTimes?.join(', ')}</Text>
                 </View>
               </View>
               <ChevronRight size={20} color={C.outline} />
@@ -114,7 +123,6 @@ export default function MedsScreen() {
           ))}
         </View>
 
-        {/* Compliance */}
         <View style={styles.complianceCard}>
           <View>
             <Text style={styles.complianceLabel}>MONTHLY COMPLIANCE</Text>
@@ -122,49 +130,39 @@ export default function MedsScreen() {
           </View>
           <View style={styles.chartWrap}>
             {[0.5, 0.75, 0.65, 0.95, 1].map((h, i) => (
-              <View
-                key={i}
-                style={[styles.chartBar, { height: `${h * 100}%`, opacity: 0.2 + h * 0.8 }]}
-              />
+              <View key={i} style={[styles.chartBar, { height: `${h * 100}%`, opacity: 0.2 + h * 0.8 }]} />
             ))}
           </View>
         </View>
 
         <View style={{ height: 100 }} />
       </ScrollView>
+      )}
 
-      {/* FAB */}
       <TouchableOpacity style={styles.fab} onPress={() => setModalVisible(true)}>
         <Plus size={28} color="#fff" />
       </TouchableOpacity>
 
-      {/* Add Med Modal */}
       <Modal visible={modalVisible} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalSheet}>
             <Text style={styles.modalTitle}>Add Medication</Text>
             <Text style={styles.fieldLabel}>MEDICATION NAME</Text>
             <TextInput
-              style={styles.modalInput}
-              placeholder="e.g. Aspirin"
-              placeholderTextColor={C.outline}
-              value={name}
-              onChangeText={setName}
+              style={styles.modalInput} placeholder="e.g. Aspirin"
+              placeholderTextColor={C.outline} value={name} onChangeText={setName}
             />
             <Text style={styles.fieldLabel}>DOSAGE</Text>
             <TextInput
-              style={styles.modalInput}
-              placeholder="e.g. 81mg"
-              placeholderTextColor={C.outline}
-              value={dosage}
-              onChangeText={setDosage}
+              style={styles.modalInput} placeholder="e.g. 81mg"
+              placeholderTextColor={C.outline} value={dosage} onChangeText={setDosage}
             />
             <View style={styles.modalBtns}>
               <TouchableOpacity style={styles.cancelBtn} onPress={() => setModalVisible(false)}>
                 <Text style={styles.cancelBtnText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.saveBtn} onPress={handleAdd}>
-                <Text style={styles.saveBtnText}>Add</Text>
+              <TouchableOpacity style={styles.saveBtn} onPress={handleAdd} disabled={saving}>
+                <Text style={styles.saveBtnText}>{saving ? 'Adding...' : 'Add'}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -178,6 +176,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.surface },
   scroll: { flex: 1 },
   content: { paddingHorizontal: 24, paddingTop: 8, paddingBottom: 32 },
+  loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -186,8 +185,7 @@ const styles = StyleSheet.create({
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   avatar: {
     width: 40, height: 40, borderRadius: 20,
-    backgroundColor: C.surfaceContainerHigh,
-    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: C.surfaceContainerHigh, alignItems: 'center', justifyContent: 'center',
   },
   avatarText: { fontSize: 16, fontWeight: '700', color: C.onSurface },
   headerTitle: { fontSize: 22, fontWeight: '800', color: C.onSurface, letterSpacing: -0.3 },
@@ -203,8 +201,7 @@ const styles = StyleSheet.create({
   heroUnit: { fontSize: 22, fontWeight: '500', color: 'rgba(255,255,255,0.9)' },
   heroPill: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderRadius: 12, padding: 12,
+    backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 12, padding: 12,
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
   },
   heroPillName: { fontSize: 14, fontWeight: '600', color: '#fff' },
@@ -216,19 +213,16 @@ const styles = StyleSheet.create({
   },
 
   alertCard: {
-    flexDirection: 'row', gap: 16,
-    backgroundColor: C.surfaceContainerLowest,
+    flexDirection: 'row', gap: 16, backgroundColor: C.surfaceContainerLowest,
     borderRadius: 20, padding: 20, marginBottom: 24,
     borderWidth: 1, borderColor: C.primaryContainer + '30',
     shadowColor: '#5a4136', shadowOpacity: 0.06, shadowRadius: 8, elevation: 2,
   },
   alertIcon: {
     width: 48, height: 48, borderRadius: 24,
-    backgroundColor: C.primaryContainer + '18',
-    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: C.primaryContainer + '18', alignItems: 'center', justifyContent: 'center',
   },
   alertBody: { flex: 1, gap: 4 },
-  alertTopRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   alertEyebrow: { fontSize: 10, fontWeight: '700', letterSpacing: 1.5, color: C.primary },
   alertTitle: { fontSize: 15, fontWeight: '700', color: C.onSurface },
   alertText: { fontSize: 13, color: C.onSurfaceVariant, lineHeight: 20 },
@@ -239,7 +233,6 @@ const styles = StyleSheet.create({
   },
   sectionTitle: { fontSize: 22, fontWeight: '700', color: C.onSurface, letterSpacing: -0.3 },
   sectionSub: { fontSize: 13, color: C.onSurfaceVariant, marginTop: 2 },
-  viewHistory: { fontSize: 13, fontWeight: '600', color: C.primary },
 
   medList: { gap: 12, marginBottom: 24 },
   medCard: {
@@ -248,8 +241,7 @@ const styles = StyleSheet.create({
   },
   medIconWrap: {
     width: 56, height: 56, borderRadius: 14,
-    backgroundColor: C.surfaceContainerLowest,
-    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: C.surfaceContainerLowest, alignItems: 'center', justifyContent: 'center',
   },
   medInfo: { flex: 1 },
   medName: { fontSize: 17, fontWeight: '700', color: C.onSurface, marginBottom: 4 },
@@ -265,13 +257,9 @@ const styles = StyleSheet.create({
   complianceValue: { fontSize: 32, fontWeight: '900', color: C.onSurface },
   chartWrap: {
     flexDirection: 'row', alignItems: 'flex-end', gap: 4,
-    height: 64, width: 128,
-    backgroundColor: C.surfaceContainerLowest, borderRadius: 10, padding: 8,
+    height: 64, width: 128, backgroundColor: C.surfaceContainerLowest, borderRadius: 10, padding: 8,
   },
-  chartBar: {
-    flex: 1, borderRadius: 4,
-    backgroundColor: C.primaryContainer,
-  },
+  chartBar: { flex: 1, borderRadius: 4, backgroundColor: C.primaryContainer },
 
   fab: {
     position: 'absolute', bottom: 100, right: 24,
@@ -296,14 +284,12 @@ const styles = StyleSheet.create({
   modalBtns: { flexDirection: 'row', gap: 12, marginTop: 8 },
   cancelBtn: {
     flex: 1, height: 52, borderRadius: 12,
-    backgroundColor: C.surfaceContainerHigh,
-    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: C.surfaceContainerHigh, alignItems: 'center', justifyContent: 'center',
   },
   cancelBtnText: { fontSize: 15, fontWeight: '700', color: C.onSurface },
   saveBtn: {
     flex: 1, height: 52, borderRadius: 12,
-    backgroundColor: C.primaryContainer,
-    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: C.primaryContainer, alignItems: 'center', justifyContent: 'center',
   },
   saveBtnText: { fontSize: 15, fontWeight: '700', color: C.onPrimaryContainer },
 });

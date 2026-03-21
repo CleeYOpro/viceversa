@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { useVillageStore } from '../../stores/useVillageStore';
+// useVillageStore is also used directly for refresh after save
 import { collection, addDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { X, Clock, Camera, Send, ChevronDown } from 'lucide-react-native';
@@ -37,19 +38,25 @@ export default function LogScreen() {
     if (!activeVillageId || !user) return;
     setSaving(true);
     try {
-      await addDoc(collection(db, 'villages', activeVillageId, 'logs'), {
-        type: 'note',
+      await addDoc(collection(db, 'patients', activeVillageId, 'healthLogs'), {
+        type: bp ? 'bp' : selectedMed ? 'medication' : 'note',
         timestamp: Timestamp.now(),
+        authorId: user.uid,
+        authorName: user.displayName ?? 'Caregiver',
+        isRestricted: false,
         notes: [
           selectedMed && `Medication: ${selectedMed}`,
-          bp && `BP: ${bp} mmHg`,
-          glucose && `Glucose: ${glucose} mg/dL`,
-          temp && `Temp: ${temp}°F`,
           selectedTags.length && `Observations: ${selectedTags.join(', ')}`,
           notes,
         ].filter(Boolean).join('\n'),
-        authorId: user.uid,
+        vitals: {
+          ...(bp ? { bp } : {}),
+          ...(glucose ? { glucose: parseFloat(glucose) } : {}),
+          ...(temp ? { temperature: parseFloat(temp) } : {}),
+        },
       });
+      // Refresh store data
+      useVillageStore.getState().loadPatientData(activeVillageId);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
       setSelectedMed(''); setBp(''); setGlucose(''); setTemp('');
