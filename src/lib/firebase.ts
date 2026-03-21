@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { getAuth, initializeAuth, getReactNativePersistence } from 'firebase/auth';
+import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
 import { initializeFirestore, persistentLocalCache } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getDatabase } from 'firebase/database';
@@ -17,9 +18,17 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-// Firebase v12 automatically uses AsyncStorage for persistence in React Native
-// when @react-native-async-storage/async-storage is installed as a peer dep.
-export const auth = getAuth(app);
+function getAuthWithPersistence() {
+  try {
+    return initializeAuth(app, {
+      persistence: getReactNativePersistence(ReactNativeAsyncStorage),
+    });
+  } catch {
+    return getAuth(app);
+  }
+}
+
+export const auth = getAuthWithPersistence();
 
 export const db = initializeFirestore(app, {
   localCache: persistentLocalCache(),
