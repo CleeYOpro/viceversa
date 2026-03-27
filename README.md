@@ -1,4 +1,4 @@
-# KomeKare
+# KomeKare - 3rd place at Divergent Hackathon
 
 KomeKare is an AI-powered family caregiver coordination mobile app built natively utilizing Expo and Firebase infrastructure linking AI summarizations with Google Gemini 1.5 Flash models.
 
